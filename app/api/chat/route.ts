@@ -36,7 +36,7 @@ class DatabaseService {
     });
   }
 
-  async searchNeonDb(queryEmbedding: number[], tableName: string, topK: number = 5): Promise<Document[]> {
+  async searchNeonDb(queryEmbedding: number[], tableName: string, topK: number = 10): Promise<Document[]> {
     console.log('📊 [DB Search] Function called with:', {
       tableName,
       topK,
@@ -254,7 +254,7 @@ export async function POST(req: Request) {
     
     // Before DB search
     console.log('⏳ [POST] Searching database');
-    const similarDocs = await dbService.searchNeonDb(embedding, "bents", 5);
+    const similarDocs = await dbService.searchNeonDb(embedding, "bents", 10);
     console.log('✅ [POST] Found similar documents:', {
       count: similarDocs.length
     });
