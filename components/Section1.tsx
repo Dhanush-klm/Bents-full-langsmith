@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { MessageSquare, LayoutDashboard } from 'lucide-react';
@@ -122,6 +122,16 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
 }
 
 export default function Section1({ onStartChatting, isSignedIn }: Section1Props) {
+  console.log('isSignedIn:', isSignedIn);
+  
+  // Add this useEffect for debugging
+  useEffect(() => {
+    console.log('Clerk environment:', {
+      publishableKey: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+      signInUrl: process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL,
+    });
+  }, []);
+
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -141,7 +151,12 @@ export default function Section1({ onStartChatting, isSignedIn }: Section1Props)
     setFormMessage({ type: '', content: '' });
 
     try {
-      const response = await axios.post('/api/contact', formData);
+      const response = await axios.post('https://bents-backend-server.vercel.app/contact', formData, {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       setFormMessage({ type: 'success', content: response.data.message });
       setFormData({ name: '', email: '', subject: '', message: '' });
     } catch (error: any) {
@@ -186,8 +201,9 @@ export default function Section1({ onStartChatting, isSignedIn }: Section1Props)
                     "hover:before:translate-x-[200%]",
                     "tap-highlight-transparent",
                     "focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
-                  )}>
-                  <span className="relative z-10">Start Chatting</span>
+                  )}
+                >
+                  <span className="relative z-10">Sign In</span>
                 </button>
               </SignInButton>
             </SignedOut>
@@ -210,7 +226,8 @@ export default function Section1({ onStartChatting, isSignedIn }: Section1Props)
                   "hover:before:translate-x-[200%]",
                   "tap-highlight-transparent",
                   "focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
-                )}>
+                )}
+              >
                 <span className="relative z-10">Start Chatting</span>
               </button>
             </SignedIn>
@@ -234,7 +251,8 @@ export default function Section1({ onStartChatting, isSignedIn }: Section1Props)
                 "hover:before:translate-x-[200%]",
                 "tap-highlight-transparent",
                 "focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50"
-              )}>
+              )}
+            >
               <span className="relative z-10">Shop Now</span>
             </Link>
           </div>
