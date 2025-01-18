@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { MessageSquare, LayoutDashboard } from 'lucide-react';
 import axios from "axios";
 import { cn } from '@/lib/utils';
-import { SignInButton, SignedIn, SignedOut } from '@clerk/nextjs';
+import { SignInButton, SignedIn, SignedOut } from '@clerk/nextjs'; 
 
 // Types
 interface FormData {
