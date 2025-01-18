@@ -10,6 +10,7 @@ interface ChatHistory {
   content: string;
 }
 
+
 interface Document {
   id: string;
   text: string;
