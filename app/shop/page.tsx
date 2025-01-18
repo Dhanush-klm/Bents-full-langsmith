@@ -169,8 +169,8 @@ export default function ShopPage() {
         onNewConversation={handleNewConversation}
         userId={userId}
       />
-      <div className="container mx-auto px-2 py-4 max-w-7xl mt-16">
-        <header className="mb-8">
+      <div className="container mx-auto px-2 py-4 max-w-7xl mt-16 md:mt-24">
+        <header className="mb-8 pt-8 md:pt-0">
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-center mb-6">
             Recommended Products
           </h1>
