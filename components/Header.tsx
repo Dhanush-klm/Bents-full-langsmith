@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingBag, MessageCircle, Home, Menu, X, History } from 'lucide-react';
+import { ShoppingBag, MessageCircle, Home, Menu, X, History, BookOpen } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { SignInButton, SignedIn, SignedOut, UserButton, useAuth } from '@clerk/nextjs';
 import Image from 'next/image';
@@ -73,61 +73,9 @@ const Header = ({
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-black z-50">
-      <div className="w-full px-12">
+      <div className="w-full px-4 sm:px-12">
         <div className="flex items-center justify-between h-20">
-          <div className="flex items-center space-x-4 pl-0">
-            <button 
-              className="text-white"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-            
-            <Link href="/">
-              <Image
-                src="/bents-logo.jpg"
-                alt="Bent's Woodworking"
-                width={150}
-                height={50}
-                priority
-                className="h-12 w-auto"
-              />
-            </Link>
-          </div>
-
-          <div className="flex items-center space-x-6 pr-0">
-            {isLoaded && isSignedIn && pathname === '/chat' && (
-              <button
-                onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-                className="text-white hover:text-[rgba(23,155,215,255)]"
-                title="Chat History"
-              >
-                <History size={24} />
-              </button>
-            )}
-
-            {isLoaded && isSignedIn && (
-              <Link 
-                href="/chat" 
-                className={cn(
-                  "text-white hover:text-[rgba(23,155,215,255)]",
-                  pathname === '/chat' && "text-[rgba(23,155,215,255)]"
-                )}
-              >
-                <MessageCircle size={24} />
-              </Link>
-            )}
-
-            <Link 
-              href="/shop" 
-              className={cn(
-                "text-white hover:text-[rgba(23,155,215,255)]",
-                pathname === '/shop' && "text-[rgba(23,155,215,255)]"
-              )}
-            >
-              <ShoppingBag size={24} />
-            </Link>
-
+          <div className="flex items-center gap-4">
             <div>
               <SignedOut>
                 <SignInButton mode="modal">
@@ -147,6 +95,51 @@ const Header = ({
                 />
               </SignedIn>
             </div>
+
+            <Link href="/">
+              <Image
+                src="/bents-logo.jpg"
+                alt="Bent's Woodworking"
+                width={150}
+                height={50}
+                priority
+                className="h-12 w-auto"
+              />
+            </Link>
+          </div>
+
+          <div className="flex items-center space-x-3 sm:space-x-6">
+            {isLoaded && isSignedIn && pathname === '/chat' && (
+              <button
+                onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                className="text-white hover:text-[rgba(23,155,215,255)]"
+                title="Chat History"
+              >
+                <BookOpen size={24} className="w-7 h-7 sm:w-6 sm:h-6" />
+              </button>
+            )}
+
+            {isLoaded && isSignedIn && (
+              <Link 
+                href="/chat" 
+                className={cn(
+                  "text-white hover:text-[rgba(23,155,215,255)]",
+                  pathname === '/chat' && "text-[rgba(23,155,215,255)]"
+                )}
+              >
+                <MessageCircle size={24} className="w-7 h-7 sm:w-6 sm:h-6" />
+              </Link>
+            )}
+
+            <Link 
+              href="/shop" 
+              className={cn(
+                "text-white hover:text-[rgba(23,155,215,255)]",
+                pathname === '/shop' && "text-[rgba(23,155,215,255)]"
+              )}
+            >
+              <ShoppingBag size={24} className="w-7 h-7 sm:w-6 sm:h-6" />
+            </Link>
           </div>
         </div>
 
@@ -155,7 +148,7 @@ const Header = ({
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
             <div 
               ref={historyRef}
-              className="fixed top-0 right-0 h-full w-80 bg-white transform transition-transform duration-300 ease-in-out overflow-y-auto"
+              className="fixed top-0 left-0 h-full w-80 bg-white transform transition-transform duration-300 ease-in-out overflow-y-auto"
             >
               <div className="p-6">
                 <div className="flex justify-between items-center mb-6">
@@ -201,42 +194,6 @@ const Header = ({
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Main Menu */}
-        {isMenuOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
-            <div 
-              ref={menuRef}
-              className="fixed top-0 left-0 h-full w-64 bg-white transform transition-transform duration-300 ease-in-out"
-            >
-              <div className="p-4">
-                <button 
-                  onClick={() => setIsMenuOpen(false)} 
-                  className="absolute top-4 right-4 text-black"
-                >
-                  <X size={24} />
-                </button>
-                <ul className="mt-8">
-                  {menuItems.map((item, index) => (
-                    <li key={index} className="mb-4">
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          "flex items-center text-black hover:text-gray-600",
-                          pathname === item.href && "text-[rgba(23,155,215,255)]"
-                        )}
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        <item.icon className="mr-2" size={20} />
-                        {item.text}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
               </div>
             </div>
           </div>
