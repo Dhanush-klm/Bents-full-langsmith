@@ -94,6 +94,17 @@ const getStartTime = (timestamp: string): number => {
   return (minutes * 60) + seconds;
 };
 
+// Add these utility functions at the top with other utility functions
+const getYoutubeVideoIds = (urls: string[]) => {
+  if (!urls || !Array.isArray(urls) || urls.length === 0) return [];
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  return urls.map(url => {
+    if (!url || typeof url !== 'string') return null;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  }).filter((id): id is string => id !== null);
+};
+
 // Helper function to load saved data
 const loadSavedData = async () => {
   try {
@@ -215,21 +226,10 @@ const FixedMarkdownRenderer = ({ content }: { content: string }) => (
   </ReactMarkdown>
 );
 
-// Add these utility functions at the top with other utility functions
-const getYoutubeVideoIds = (urls: string[]) => {
-  if (!urls || !Array.isArray(urls) || urls.length === 0) return [];
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  return urls.map(url => {
-    if (!url || typeof url !== 'string') return null;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
-  }).filter((id): id is string => id !== null);
-};
-
-// Updated ConversationItem component
+// Update ConversationItem component
 const ConversationItem = ({ conv, index, isLatest }: { 
   conv: Conversation; 
-  index: number;
+  index: number; 
   isLatest: boolean;
 }) => {
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -240,8 +240,95 @@ const ConversationItem = ({ conv, index, isLatest }: {
     }
   }, [isLatest]);
 
+  // Add renderSourceVideos function inside ConversationItem
+  const renderSourceVideos = (videoLinks: VideoLinks | undefined) => {
+    if (!videoLinks || Object.keys(videoLinks).length === 0) return null;
+
+    const allVideos = Object.values(videoLinks).filter(video => video && video.urls?.[0]);
+    
+    if (allVideos.length === 0) return null;
+
+    return (
+      <div className="mt-6">
+        <h3 className="text-lg font-semibold mb-4">Related Videos</h3>
+        <div className="relative">
+          <div className="overflow-x-auto custom-scrollbar scroll-smooth">
+            <div className="flex gap-4 pb-4 min-w-min">
+              {allVideos.map((video, index) => {
+                const videoId = getYoutubeVideoIds([video.urls[0]])[0];
+                if (!videoId) return null;
+
+                const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+                const fullVideoUrl = video.urls[0].split('&t=')[0];
+
+                return (
+                  <div
+                    key={index}
+                    className="flex-shrink-0 w-[250px] bg-white rounded-[8px] border shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
+                  >
+                    <a
+                      href={`${video.urls[0]}${video.timestamp ? `&t=${getStartTime(video.timestamp)}s` : ''}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block flex-grow"
+                    >
+                      <div className="relative">
+                        <img 
+                          src={thumbnailUrl}
+                          alt={video.video_title || 'Video thumbnail'}
+                          className="w-full h-[140px] object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-black/75 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-3 flex-grow">
+                        <h4 className="font-medium text-sm line-clamp-2 mb-2">
+                          {video.video_title || 'Video Title'}
+                        </h4>
+                        {video.description && (
+                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                            {video.description.replace(/"/g, '')}
+                          </p>
+                        )}
+                        {video.timestamp && (
+                          <div className="flex items-center text-sm text-gray-500 mb-2">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Starts at {video.timestamp}</span>
+                          </div>
+                        )}
+                      </div>
+                    </a>
+                    <div className="border-t bg-gray-50">
+                      <a
+                        href={fullVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-3 flex items-center justify-center hover:bg-gray-100 transition-colors group"
+                      >
+                        <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                          Watch Full Video
+                        </span>
+                      </a>  
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div ref={conversationRef} key={conv.id} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
+    <div ref={conversationRef} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
       {/* Question Section */}
       <div className="mb-4 pb-4 border-b">
         <div className="flex items-center gap-2">
@@ -256,70 +343,8 @@ const ConversationItem = ({ conv, index, isLatest }: {
         <FixedMarkdownRenderer content={conv.text} />
       </div>
 
-      {/* Videos Section */}
-      {conv.videoLinks && Object.keys(conv.videoLinks).length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold mb-4">Related Videos</h3>
-          <div className="relative">
-            <div className="overflow-x-auto custom-scrollbar scroll-smooth">
-              <div className="flex gap-4 pb-4 min-w-min">
-                {Object.entries(conv.videoLinks).map(([key, video]) => {
-                  const videoId = getYoutubeVideoId(video.urls[0]);
-                  if (!videoId) return null;
-
-                  const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-                  const fullVideoUrl = video.urls[0].split('&t=')[0];
-
-                  return (
-                    <div
-                      key={`${conv.id}-${key}`}
-                      className="flex-shrink-0 w-[250px] bg-white rounded-[8px] border shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
-                    >
-                      <a
-                        href={`${video.urls[0]}${video.timestamp ? `&t=${getStartTime(video.timestamp)}s` : ''}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block flex-grow"
-                      >
-                        <div className="relative">
-                          <img 
-                            src={thumbnailUrl}
-                            alt={video.video_title || 'Video thumbnail'}
-                            className="w-full h-[140px] object-cover"
-                          />
-                        </div>
-                        <div className="p-3 flex-grow">
-                          <h4 className="font-medium text-sm line-clamp-2 mb-2">
-                            {video.video_title || 'Video Title'}
-                          </h4>
-                          {video.description && (
-                            <p className="text-sm text-gray-600 line-clamp-2 mb-2">
-                              {video.description}
-                            </p>
-                          )}
-                          {video.timestamp && (
-                            <div className="flex items-center text-sm text-gray-500 mb-2">
-                              <span>Starts at {video.timestamp}</span>
-                            </div>
-                          )}
-                          <a
-                            href={fullVideoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block text-sm text-blue-600 hover:text-blue-800 font-medium mt-2"
-                          >
-                            Watch Full Video
-                          </a>
-                        </div>
-                      </a>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Videos Section - Now using renderSourceVideos */}
+      {renderSourceVideos(conv.videoLinks)}
 
       {/* Products Section */}
       {conv.related_products && conv.related_products.length > 0 && (
@@ -328,32 +353,8 @@ const ConversationItem = ({ conv, index, isLatest }: {
             Related Products
           </h3>
           <div className="flex overflow-x-auto space-x-4 pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            {conv.related_products.map((product) => (
-              <div
-                key={`${conv.id}-${product.id}`}
-                className="flex-none bg-white rounded-lg border min-w-[180px] px-4 py-3 hover:bg-gray-50 transition-colors"
-              >
-                <a
-                  href={product.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <p className="text-sm font-medium text-gray-900 mb-1">
-                    {product.title}
-                  </p>
-                  {product.description && (
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {product.description}
-                    </p>
-                  )}
-                  {product.price && (
-                    <p className="text-sm font-medium text-gray-900 mt-2">
-                      {product.price}
-                    </p>
-                  )}
-                </a>
-              </div>
+            {conv.related_products.map((product, idx) => (
+              <ProductCard key={idx} product={product} />
             ))}
           </div>
         </div>
@@ -444,154 +445,155 @@ const ProcessingCard = ({
 // Main Chat Page Component
 export default function ChatPage() {
   const { userId = null } = useAuth();
-  const LOCAL_STORAGE_KEY = 'chat_sessions';
+  const {
+    sessions,
+    setSessions,
+    currentSessionId,
+    setCurrentSessionId,
+    isLoading: sessionsLoading,
+    error: sessionsError
+  } = useSession();
 
-  // Initial session state setup
-  const [sessions, setSessions] = useState(() => {
+  // Initialize with empty values
+  const [currentConversation, setCurrentConversation] = useState<Conversation[]>([]);
+  
+  // Error states
+  const [error, setError] = useState<string | null>(null);
+  const [wsError, setWsError] = useState<string | null>(null);
+
+  // Add recovery mechanism
+  const recoverState = useCallback(async () => {
+    if (!userId) return;
+    
     try {
-      const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY);
-      return savedSessions ? JSON.parse(savedSessions) : [{
-        id: uuidv4(),
-        conversations: []
-      }];
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-      return [{
-        id: uuidv4(),
-        conversations: []
-      }];
-    }
-  });
-
-  // Current session ID state setup
-  const [currentSessionId, setCurrentSessionId] = useState(() => {
-    try {
-      const savedCurrentSessionId = localStorage.getItem('current_session_id');
-      return savedCurrentSessionId || sessions[0]?.id || null;
-    } catch (error) {
-      console.error('Error loading current session ID:', error);
-      return sessions[0]?.id || null;
-    }
-  });
-
-  // Current conversation state setup
-  const [currentConversation, setCurrentConversation] = useState(() => {
-    try {
-      const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedSessions) {
-        const parsedSessions = JSON.parse(savedSessions);
-        const savedCurrentSessionId = localStorage.getItem('current_session_id');
-        const currentSession = parsedSessions.find((session: Session) => session.id === savedCurrentSessionId);
-        return currentSession?.conversations || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('Error loading conversation:', error);
-      return [];
-    }
-  });
-
-  // Effect to persist sessions
-  useEffect(() => {
-    if (sessions.length > 0) {
-      try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(sessions));
-      } catch (error) {
-        console.error('Error saving sessions:', error);
-      }
-    }
-  }, [sessions]);
-
-  // Effect to maintain current session
-  useEffect(() => {
-    if (currentSessionId) {
-      try {
-        localStorage.setItem('current_session_id', currentSessionId);
-        const currentSession = sessions.find((session: Session) => session.id === currentSessionId);
-        if (currentSession) {
-          setCurrentConversation(currentSession.conversations);
-          setShowInitialQuestions(currentSession.conversations.length === 0);
+      const response = await axios.get('/api/get-session', {
+        headers: {
+          'x-user-id': userId
         }
-      } catch (error) {
-        console.error('Error maintaining current session:', error);
-      }
-    }
-  }, [currentSessionId, sessions]);
+      });
 
-  // Update browser refresh handler to work with localStorage
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setSessions(response.data);
+        const lastSession = response.data[response.data.length - 1];
+        setCurrentSessionId(lastSession.id);
+        setCurrentConversation(lastSession.conversations || []);
+        setShowInitialQuestions(!(lastSession.conversations?.length > 0));
+      }
+    } catch (error) {
+      console.error('Failed to recover state:', error);
+      setError('Failed to load chat history');
+    }
+  }, [userId, setSessions, setCurrentSessionId]);
+
+  // Add effect to create new session on page load/refresh
   useEffect(() => {
-    const handleBrowserRefresh = async (event: BeforeUnloadEvent) => {
-      sessionStorage.setItem('is_refreshing', 'true');
-      
-      // Create new session without clearing history
-      const newSessionId = uuidv4();
-      const newSession = { 
-        id: newSessionId, 
-        conversations: [] 
-      };
-      
-      // Only update current session state, preserve sessions array
-      setCurrentSessionId(newSession.id);
+    if (userId) {
+      // Clear any existing session data first
       setCurrentConversation([]);
       setShowInitialQuestions(true);
-      setSearchQuery("");
       setProcessingQuery("");
+      setSearchQuery("");
       setLoadingProgress(0);
       setIsStreaming(false);
       
-      // Save current sessions to localStorage to persist history
-      try {
-        const currentSessions = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (currentSessions) {
-          const parsedSessions = JSON.parse(currentSessions);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([...parsedSessions, newSession]));
-        }
-      } catch (error) {
-        console.error('Error saving sessions:', error);
-      }
-      
-      if (event) {
-        event.preventDefault();
-        event.returnValue = '';
-      }
-    };
-
-    const handleLoad = () => {
-      if (sessionStorage.getItem('is_refreshing') === 'true') {
+      // Create a new session
+      const initializeNewSession = async () => {
         try {
-          // Restore sessions from localStorage
-          const savedSessions = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (savedSessions) {
-            const parsedSessions = JSON.parse(savedSessions);
-            setSessions(parsedSessions);
-            
-            // Set to the last session
-            const lastSession = parsedSessions[parsedSessions.length - 1];
-            setCurrentSessionId(lastSession.id);
-            setCurrentConversation(lastSession.conversations);
+          const newSessionId = uuidv4();
+          const newSession: Session = {
+            id: newSessionId,
+            conversations: []
+          };
+
+          if (userId) {
+            const response = await axios.post('/api/set-session', {
+              sessions: [newSession]
+            }, {
+              headers: {
+                'x-user-id': userId
+              }
+            });
+
+            if (response.data.success) {
+              setSessions([newSession]);
+              setCurrentSessionId(newSessionId);
+              setShowInitialQuestions(true);
+              currentQuestionRef.current = "";
+            } else {
+              throw new Error('Failed to create new session');
+            }
           }
         } catch (error) {
-          console.error('Error loading sessions:', error);
+          console.error('Error initializing new session:', error);
+          setError('Failed to create new session');
+          
+          // Try to recover state
+          await recoverState();
         }
-        
+      };
+
+      initializeNewSession();
+    }
+  }, [userId]); // Only depend on userId
+
+  // Update manageSession
+  const manageSession = useCallback(async () => {
+    try {
+      // Clear existing state
+      setCurrentConversation([]);
+      setShowInitialQuestions(true);
+      setProcessingQuery("");
+      setSearchQuery("");
+      
+      const newSessionId = uuidv4();
+      const newSession: Session = {
+        id: newSessionId,
+        conversations: []
+      };
+
+      if (userId) {
+        const response = await axios.post('/api/set-session', {
+          sessions: [newSession]
+        }, {
+          headers: {
+            'x-user-id': userId
+          }
+        });
+
+        if (response.data.success) {
+          setSessions(prevSessions => [...prevSessions, newSession]);
+          setCurrentSessionId(newSessionId);
+          setShowInitialQuestions(true);
+          currentQuestionRef.current = "";
+        } else {
+          throw new Error('Failed to save new session');
+        }
+      } else {
+        setSessions(prevSessions => [...prevSessions, newSession]);
+        setCurrentSessionId(newSessionId);
         setShowInitialQuestions(true);
-        setSearchQuery("");
-        setProcessingQuery("");
-        setLoadingProgress(0);
-        setIsStreaming(false);
-        
-        sessionStorage.removeItem('is_refreshing');
+        currentQuestionRef.current = "";
       }
-    };
+    } catch (error) {
+      console.error('Error in manageSession:', error);
+      setError('Failed to create new session');
+      
+      // Try to recover state
+      await recoverState();
+    }
+  }, [userId, setSessions, setCurrentSessionId, recoverState]);
 
-    window.addEventListener('beforeunload', handleBrowserRefresh);
-    window.addEventListener('load', handleLoad);
+  // Update handleNewConversation to use manageSession
+  const handleNewConversation = useCallback(() => {
+    manageSession();
+  }, [manageSession]);
 
-    return () => {
-      window.removeEventListener('beforeunload', handleBrowserRefresh);
-      window.removeEventListener('load', handleLoad);
-    };
-  }, []);
+  // Add effect to create new session on page load/refresh
+  useEffect(() => {
+    if (userId) {
+      manageSession();
+    }
+  }, [userId, manageSession]);
 
   // Other states
   const [showInitialQuestions, setShowInitialQuestions] = useState(true);
@@ -618,9 +620,6 @@ export default function ChatPage() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [userHasScrolled, setUserHasScrolled] = useState(false);
   const lastScrollPosition = useRef(0);
-
-  const [error, setError] = useState<string | null>(null);
-  const [wsError, setWsError] = useState<string | null>(null);
 
   const { messages, append, isLoading } = useChat({
     api: '/api/chat',
@@ -660,29 +659,38 @@ export default function ChatPage() {
           related_products: linksResponse.data.relatedProducts || []
         };
 
-        // Update sessions while preserving history
-        setSessions((prevSessions: Session[]) => {
-          const updatedSessions = prevSessions.map((session: Session) => {
-            if (session.id === currentSessionId) {
-              return {
-                ...session,
-                conversations: [...session.conversations, newConversation]
-              };
-            }
-            return session;
-          });
+        // Find and update the current session
+        const currentSession = sessions.find(s => s.id === currentSessionId);
+        if (currentSession) {
+          const updatedSession = {
+            ...currentSession,
+            conversations: [...(currentSession.conversations || []), newConversation]
+          };
           
-          // Save to localStorage to persist all sessions
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedSessions));
-          return updatedSessions;
-        });
-
-        // Update current conversation
-        setCurrentConversation((prev: Conversation[]) => [...prev, newConversation]);
-        
+          try {
+            // Save to database first
+            if (userId) {
+              await saveSessionsToDB([updatedSession]);
+            }
+            
+            // Only update local state if save was successful
+            setSessions(prevSessions => 
+              prevSessions.map(s => 
+                s.id === currentSessionId ? updatedSession : s
+              )
+            );
+            setCurrentConversation(updatedSession.conversations);
+          } catch (error) {
+            console.error('Failed to save session:', error);
+            // Try to recover state
+            await recoverState();
+          }
+        }
       } catch (error) {
         console.error('Error in onFinish:', error);
         setError('Error updating chat history');
+        // Try to recover state
+        await recoverState();
       } finally {
         setIsSecondResponseLoading(false);
         setProcessingQuery("");
@@ -801,14 +809,14 @@ export default function ChatPage() {
               <h3 className="text-base font-semibold mb-2">Related Videos</h3>
               <div className="flex overflow-x-auto space-x-4">
                 {[1, 2].map((i) => (
-                  <div key={`video-skeleton-${i}`} className="flex-none w-[280px] bg-white border rounded-lg overflow-hidden">
+                  <div key={i} className="flex-none w-[280px] bg-white border rounded-lg overflow-hidden">
                     <div className="aspect-video w-full bg-gray-200 animate-pulse" />
                     <div className="p-3">
                       <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
                       <div className="h-4 bg-gray-200 rounded animate-pulse w-2/3" />
                     </div>
                   </div>
-                ))} 
+                ))}
               </div>
             </div>
             
@@ -817,7 +825,7 @@ export default function ChatPage() {
               <h3 className="text-base font-semibold mb-2">Related Products</h3>
               <div className="flex overflow-x-auto space-x-4">
                 {[1, 2, 3].map((i) => (
-                  <div key={`product-skeleton-${i}`} className="flex-none min-w-[180px] bg-white border rounded-lg px-4 py-3">
+                  <div key={i} className="flex-none min-w-[180px] bg-white border rounded-lg px-4 py-3">
                     <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
                     <div className="h-4 bg-gray-200 rounded animate-pulse w-2/3" />
                   </div>
@@ -849,26 +857,28 @@ export default function ChatPage() {
           }
         `}</style>
 
-        {currentConversation.map((conv: Conversation, index: number) => (
+        {/* Existing conversation items */}
+        {currentConversation.map((conv, index) => (
           <ConversationItem 
             key={conv.id}
             conv={conv}
             index={index}
-            isLatest={index === currentConversation.length - 1}
+            isLatest={false}
           />
         ))}
 
+        {/* Show ProcessingCard during initial loading */}
         {isLoading && !isStreaming && (
           <ProcessingCard 
-            key="processing-card"
             query={processingQuery}
             loadingProgress={loadingProgress}
             setLoadingProgress={setLoadingProgress}
           />
         )}
 
+        {/* Streaming response */}
         {(isStreaming || isSecondResponseLoading) && messages.length > 0 && (
-          <div key="streaming-response" className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
+          <div className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
             {/* Question Section */}
             <div className="mb-4 pb-4 border-b">
               <div className="flex items-center gap-2">
@@ -878,21 +888,16 @@ export default function ChatPage() {
               </div>
             </div>
 
-            {/* Answer Section - Updated to ensure content display */}
+            {/* Streaming Answer Section */}
             <div className="prose prose-sm max-w-none mb-4">
               <div className="text-base leading-relaxed" style={{ fontFamily: systemFontFamily }}>
-                {messages[messages.length - 1]?.content && (
-                  <FixedMarkdownRenderer 
-                    key={`markdown-${messages[messages.length - 1].id || Date.now()}`} 
-                    content={messages[messages.length - 1].content} 
-                  />
-                )}
+                <FixedMarkdownRenderer content={messages[messages.length - 1].content} />
               </div>
             </div>
 
             {/* Loading state for additional content */}
             {isSecondResponseLoading && (
-              <div key="loading-state" className="mt-6">
+              <div className="mt-6">
                 <LoadingState />
               </div>
             )}
@@ -937,7 +942,7 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    const selectedSession = sessions.find((session: Session) => session.id === currentSessionId);
+    const selectedSession = sessions.find(session => session.id === currentSessionId);
     if (selectedSession) {
       setCurrentConversation(selectedSession.conversations);
       setShowInitialQuestions(selectedSession.conversations.length === 0);
@@ -981,7 +986,7 @@ export default function ChatPage() {
   };
 
   const handleSessionSelect = (sessionId: string) => {
-    const selectedSession = sessions.find((session: Session) => session.id === sessionId);
+    const selectedSession = sessions.find(session => session.id === sessionId);
     if (selectedSession) {
       setCurrentSessionId(sessionId);
       setCurrentConversation(selectedSession.conversations);
@@ -1040,50 +1045,12 @@ export default function ChatPage() {
     }
   };
 
-  const recoverState = useCallback(async () => {
-    try {
-      if (userId) {
-        const response = await axios.get('/api/get-session', {
-          headers: { 'x-user-id': userId }
-        });
-        if (response.data.sessions) {
-          setSessions(response.data.sessions);
-          setCurrentSessionId(response.data.sessions[0]?.id || '');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to recover state:', error);
-      setError('Failed to recover chat history');
-    }
-  }, [userId]);
-
+  // Add recovery effect
   useEffect(() => {
-    const isRefreshing = sessionStorage.getItem('is_refreshing') === 'true';
-    if (userId && (!sessions.length || !currentSessionId) && !isRefreshing) {
+    if (userId && (!sessions.length || !currentSessionId)) {
       recoverState();
     }
   }, [userId, sessions.length, currentSessionId, recoverState]);
-
-  const handleNewConversation = () => {
-    const newSession = { id: uuidv4(), conversations: [] };
-    setSessions((prev: Session[]) => {
-      const updatedSessions = [...prev, newSession];
-      // Save to localStorage to persist history
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updatedSessions));
-      return updatedSessions;
-    });
-    setCurrentSessionId(newSession.id);
-    setCurrentConversation([]);
-    setShowInitialQuestions(true);
-  };
-
-  const manageSession = async () => {
-    const newSession = { id: uuidv4(), conversations: [] };
-    setSessions((prev: Session[]) => [...prev, newSession]);
-    setCurrentSessionId(newSession.id);
-    setCurrentConversation([]);
-    return newSession;
-  };
 
   // Main render
   return (
@@ -1174,8 +1141,8 @@ export default function ChatPage() {
             </main>
 
             {!showInitialQuestions && (
-              <div className="fixed bottom-0 left-0 right-0 bg-white border-t w-full">
-                <div className="w-full mx-auto">
+              <div className="fixed bottom-0 left-0 right-0 bg-white border-t">
+                <div className="w-full mx-auto px-0">
                   <SearchBar 
                     loading={isLoading}
                     searchQuery={searchQuery}
@@ -1217,6 +1184,7 @@ const SearchBar = ({
   isLarge?: boolean;
   disabled?: boolean;
 }) => {
+  // Add handler for key press
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1226,6 +1194,7 @@ const SearchBar = ({
     }
   };
 
+  // Add button click handler
   const handleButtonClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1242,6 +1211,7 @@ const SearchBar = ({
         onSubmit={onSearch} 
         className={cn(
           "w-full flex items-center bg-white py-1.5",
+          "px-4 md:px-8 lg:px-12",
           disabled && "bg-gray-50"
         )}
       >
@@ -1333,4 +1303,3 @@ const SearchBar = ({
     </div>
   );
 };
-
