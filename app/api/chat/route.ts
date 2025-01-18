@@ -260,7 +260,7 @@ export async function POST(req: Request) {
     });
 
     const contextTexts = similarDocs.map(doc => 
-      `Source: ${doc.title}\nContent: ${doc.text}`
+      `Source: ${doc.title}\nContent: ${doc.text}\nURL: ${doc.url}`
     ).join('\n\n');
 
     // Only make links request for RELEVANT messages that have context
