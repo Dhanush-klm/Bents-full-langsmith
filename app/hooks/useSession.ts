@@ -1,86 +1,131 @@
-// app/api/set-session/route.ts
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import pool from '@/lib/db';
+'use client';
 
-interface Conversation {
+import { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import { useAuth } from '@clerk/nextjs';
+
+// Types
+export interface Conversation {
+  id: string;
   question: string;
   text: string;
-  videoLinks?: Record<string, any>;
-  related_products?: any[];
+  initial_answer?: string;
+  videoLinks?: {
+    [key: string]: {
+      urls: string[];
+      timestamp: string;
+      video_title: string;
+      description: string;
+    };
+  };
+  related_products?: Array<{
+    id: string;
+    title: string;
+    link: string;
+    tags: string[];
+    description?: string;
+    price?: string;
+    category?: string;
+    image_data?: string;
+  }>;
   timestamp: string;
 }
 
-interface Session {
+export interface Session {
   id: string;
   conversations: Conversation[];
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const userId = request.headers.get('x-user-id');
-    console.log('SET Session - User ID from header:', userId);
-
-    if (!userId) {
-      console.log('SET Session - No user ID found in header');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const { sessions } = body;
-
-    console.log('SET Session - Received sessions:', sessions);
-
-    if (!Array.isArray(sessions)) {
-      console.log('SET Session - Invalid sessions data format');
-      return NextResponse.json(
-        { error: 'Invalid sessions data format' }, 
-        { status: 400 }
-      );
-    }
-
-    // Clean and prepare session data, ensure it's a valid array
-    const cleanedSessionData = sessions.map((session: Session) => ({
-      id: session.id,
-      conversations: session.conversations.map((conv: Conversation) => ({
-        question: conv.question,
-        text: conv.text,
-        videoLinks: conv.videoLinks || {},
-        related_products: conv.related_products || [],
-        timestamp: conv.timestamp || new Date().toISOString()
-      }))
-    }));
-
-    // If the cleaned data is empty, initialize with an empty array
-    const dataToStore = cleanedSessionData.length > 0 ? cleanedSessionData : [];
-
-    const client = await pool.connect();
-    try {
-      const result = await client.query(
-        `INSERT INTO session_hist (user_id, session_data) 
-         VALUES ($1, $2::jsonb) 
-         ON CONFLICT (user_id) 
-         DO UPDATE SET 
-           session_data = $2::jsonb,
-           updated_at = CURRENT_TIMESTAMP 
-         RETURNING *`,
-        [userId, JSON.stringify(dataToStore)]
-      );
-
-      console.log('SET Session - Updated row:', result.rows[0]);
-
-      return NextResponse.json({ 
-        success: true,
-        sessionCount: dataToStore.length
-      });
-    } finally {
-      client.release();
-    }
-  } catch (error) {
-    console.error('SET Session - Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to save session data' }, 
-      { status: 500 }
-    );
-  }
+interface UseSessionReturn {
+  sessions: Session[];
+  setSessions: React.Dispatch<React.SetStateAction<Session[]>>;
+  currentSessionId: string | null;
+  setCurrentSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  isLoading: boolean;
+  error: string | null;
 }
+
+export function useSession(): UseSessionReturn {
+  const { userId } = useAuth();
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadSessions = async () => {
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const response = await axios.get('/api/get-session', {
+          headers: {
+            'x-user-id': userId
+          }
+        });
+        const savedSessions = response.data;
+
+        if (Array.isArray(savedSessions) && savedSessions.length > 0) {
+          setSessions(savedSessions);
+          
+          // Check URL for session state
+          const urlParams = new URLSearchParams(window.location.search);
+          const sessionParam = urlParams.get('session');
+          
+          if (sessionParam === 'new') {
+            // Create new session if URL indicates new conversation
+            const newSession = { id: crypto.randomUUID(), conversations: [] };
+            setSessions(prev => [...prev, newSession]);
+            setCurrentSessionId(newSession.id);
+          } else if (sessionParam) {
+            // Load specific session if ID is in URL
+            const sessionExists = savedSessions.some(s => s.id === sessionParam);
+            setCurrentSessionId(sessionExists ? sessionParam : savedSessions[0].id);
+          } else {
+            // Default to most recent session
+            setCurrentSessionId(savedSessions[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading sessions:', error);
+        setError('Failed to load chat history');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSessions();
+  }, [userId]);
+
+  const updateSessions = useCallback(async (newSessions: Session[]) => {
+    if (!userId || !Array.isArray(newSessions)) return;
+
+    const validSessions = newSessions.filter(session => 
+      session && session.id && Array.isArray(session.conversations)
+    );
+
+    if (validSessions.length > 0) {
+      setSessions(validSessions);
+      try {
+        await axios.post('/api/set-session', 
+          { sessions: validSessions },
+          { headers: { 'x-user-id': userId } }
+        );
+      } catch (error) {
+        console.error('Failed to update sessions:', error);
+        setError('Failed to save chat history');
+      }
+    }
+  }, [userId]);
+
+  return {
+    sessions,
+    setSessions,
+    currentSessionId,
+    setCurrentSessionId,
+    isLoading,
+    error
+  };
+} 
