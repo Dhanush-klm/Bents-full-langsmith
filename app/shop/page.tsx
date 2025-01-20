@@ -81,13 +81,13 @@ export default function ShopPage() {
     sessions,
     currentSessionId,
     setCurrentSessionId,
-    setSessions,
-    createNewSession
+    setSessions
   } = useSession();
 
-  const handleNewConversation = async () => {
-    const newSessionId = await createNewSession();
-    setCurrentSessionId(newSessionId);
+  const handleNewConversation = () => {
+    const newSession = { id: crypto.randomUUID(), conversations: [] };
+    setSessions(prev => [...prev, newSession]);
+    setCurrentSessionId(newSession.id);
   };
 
   const handleSessionSelect = (sessionId: string) => {
