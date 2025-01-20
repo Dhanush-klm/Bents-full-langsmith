@@ -25,14 +25,14 @@ export default function Home() {
     currentSessionId,
     setCurrentSessionId,
     isLoading: sessionsLoading,
-    error: sessionsError
+    error: sessionsError,
+    createNewSession
   } = useSession();
 
   // Handle new conversation creation
-  const handleNewConversation = () => {
-    const newSession = { id: crypto.randomUUID(), conversations: [] };
-    setSessions(prev => [...prev, newSession]);
-    setCurrentSessionId(newSession.id);
+  const handleNewConversation = async () => {
+    const newSessionId = await createNewSession();
+    setCurrentSessionId(newSessionId);
   };
 
   // Handle session selection
