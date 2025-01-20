@@ -69,24 +69,7 @@ export function useSession(): UseSessionReturn {
 
         if (Array.isArray(savedSessions) && savedSessions.length > 0) {
           setSessions(savedSessions);
-          
-          // Check URL for session state
-          const urlParams = new URLSearchParams(window.location.search);
-          const sessionParam = urlParams.get('session');
-          
-          if (sessionParam === 'new') {
-            // Create new session if URL indicates new conversation
-            const newSession = { id: crypto.randomUUID(), conversations: [] };
-            setSessions(prev => [...prev, newSession]);
-            setCurrentSessionId(newSession.id);
-          } else if (sessionParam) {
-            // Load specific session if ID is in URL
-            const sessionExists = savedSessions.some(s => s.id === sessionParam);
-            setCurrentSessionId(sessionExists ? sessionParam : savedSessions[0].id);
-          } else {
-            // Default to most recent session
-            setCurrentSessionId(savedSessions[0].id);
-          }
+          // Don't set currentSessionId here - let the page create a new one
         }
       } catch (error) {
         console.error('Error loading sessions:', error);
