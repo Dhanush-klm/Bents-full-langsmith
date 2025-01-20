@@ -47,45 +47,20 @@ interface UseSessionReturn {
   createNewSession: () => Promise<string>;
 }
 
-// Create a singleton instance to share state across components
-let globalSessions: Session[] = [];
-let globalCurrentSessionId: string | null = null;
-
 export function useSession(): UseSessionReturn {
   const { userId } = useAuth();
-  const [sessions, setSessions] = useState<Session[]>(globalSessions);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(globalCurrentSessionId);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Update global state when local state changes
-  const updateGlobalState = useCallback((newSessions: Session[], newCurrentId: string | null) => {
-    globalSessions = newSessions;
-    globalCurrentSessionId = newCurrentId;
-  }, []);
-
-  // Custom setState functions that update both local and global state
-  const setSessionsWithGlobal = useCallback((newSessions: Session[] | ((prev: Session[]) => Session[])) => {
-    setSessions(prev => {
-      const nextSessions = typeof newSessions === 'function' ? newSessions(prev) : newSessions;
-      updateGlobalState(nextSessions, currentSessionId);
-      return nextSessions;
-    });
-  }, [currentSessionId, updateGlobalState]);
-
-  const setCurrentSessionIdWithGlobal = useCallback((newId: string | null | ((prev: string | null) => string | null)) => {
-    setCurrentSessionId(prev => {
-      const nextId = typeof newId === 'function' ? newId(prev) : newId;
-      updateGlobalState(sessions, nextId);
-      return nextId;
-    });
-  }, [sessions, updateGlobalState]);
-
-  // Load sessions only once when component mounts
+  // Load sessions from database
   useEffect(() => {
     const loadSessions = async () => {
-      if (!userId || isInitialized) return;
+      if (!userId) {
+        setIsLoading(false);
+        return;
+      }
 
       try {
         const response = await axios.get('/api/get-session', {
@@ -96,45 +71,25 @@ export function useSession(): UseSessionReturn {
         const savedSessions = response.data;
 
         if (Array.isArray(savedSessions) && savedSessions.length > 0) {
+          // Sort sessions by most recent conversation
           const sortedSessions = savedSessions.sort((a, b) => {
             const aTime = a.conversations[0]?.timestamp || '0';
             const bTime = b.conversations[0]?.timestamp || '0';
             return new Date(bTime).getTime() - new Date(aTime).getTime();
           });
           
-          setSessionsWithGlobal(sortedSessions);
-          setCurrentSessionIdWithGlobal(sortedSessions[0].id);
+          setSessions(sortedSessions);
         }
       } catch (error) {
         console.error('Error loading sessions:', error);
         setError('Failed to load chat history');
       } finally {
         setIsLoading(false);
-        setIsInitialized(true);
       }
     };
 
     loadSessions();
-  }, [userId, isInitialized, setSessionsWithGlobal, setCurrentSessionIdWithGlobal]);
-
-  // Update sessions in database whenever they change
-  useEffect(() => {
-    const updateDatabase = async () => {
-      if (!userId || !isInitialized || sessions.length === 0) return;
-
-      try {
-        await axios.post('/api/set-session', 
-          { sessions },
-          { headers: { 'x-user-id': userId } }
-        );
-      } catch (error) {
-        console.error('Failed to update sessions:', error);
-        setError('Failed to save chat history');
-      }
-    };
-
-    updateDatabase();
-  }, [userId, sessions, isInitialized]);
+  }, [userId]);
 
   const updateSessionConversations = useCallback(async (
     sessionId: string,
@@ -152,27 +107,52 @@ export function useSession(): UseSessionReturn {
       return session;
     });
 
-    setSessionsWithGlobal(updatedSessions);
-    const currentSession = updatedSessions.find(s => s.id === sessionId);
-    return currentSession?.conversations || null;
-  }, [userId, sessions, setSessionsWithGlobal]);
+    try {
+      await axios.post('/api/set-session', 
+        { sessions: updatedSessions },
+        { headers: { 'x-user-id': userId } }
+      );
+      
+      setSessions(updatedSessions);
+      const currentSession = updatedSessions.find(s => s.id === sessionId);
+      return currentSession?.conversations || null;
+    } catch (error) {
+      console.error('Failed to update sessions:', error);
+      setError('Failed to save chat history');
+      return null;
+    }
+  }, [userId, sessions]);
 
+  // Add new function to handle creating new conversations
   const createNewSession = useCallback(async () => {
     const newSession = { 
       id: crypto.randomUUID(), 
       conversations: [] 
     };
     
-    setSessionsWithGlobal(prev => [newSession, ...prev]);
-    setCurrentSessionIdWithGlobal(newSession.id);
+    // Add new session to the beginning of the array
+    const updatedSessions = [newSession, ...sessions];
+    setSessions(updatedSessions);
+    setCurrentSessionId(newSession.id);
+
+    try {
+      await axios.post('/api/set-session',
+        { sessions: updatedSessions },
+        { headers: { 'x-user-id': userId } }
+      );
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+      setError('Failed to create new chat');
+    }
+
     return newSession.id;
-  }, [setSessionsWithGlobal, setCurrentSessionIdWithGlobal]);
+  }, [userId, sessions]);
 
   return {
     sessions,
-    setSessions: setSessionsWithGlobal,
+    setSessions,
     currentSessionId,
-    setCurrentSessionId: setCurrentSessionIdWithGlobal,
+    setCurrentSessionId,
     isLoading,
     error,
     updateSessionConversations,
