@@ -462,8 +462,84 @@ export default function ChatPage() {
   const [wsError, setWsError] = useState<string | null>(null);
 
   // Add recovery mechanism
-  const manageSession: () => Promise<void> = useCallback(async () => {
+  const recoverState = useCallback(async () => {
+    if (!userId) return;
+    
     try {
+      const response = await axios.get('/api/get-session', {
+        headers: {
+          'x-user-id': userId
+        }
+      });
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setSessions(response.data);
+        const lastSession = response.data[response.data.length - 1];
+        setCurrentSessionId(lastSession.id);
+        setCurrentConversation(lastSession.conversations || []);
+        setShowInitialQuestions(!(lastSession.conversations?.length > 0));
+      }
+    } catch (error) {
+      console.error('Failed to recover state:', error);
+      setError('Failed to load chat history');
+    }
+  }, [userId, setSessions, setCurrentSessionId]);
+
+  // Add effect to create new session on page load/refresh
+  useEffect(() => {
+    if (userId) {
+      // Clear any existing session data first
+      setCurrentConversation([]);
+      setShowInitialQuestions(true);
+      setProcessingQuery("");
+      setSearchQuery("");
+      setLoadingProgress(0);
+      setIsStreaming(false);
+      
+      // Create a new session
+      const initializeNewSession = async () => {
+        try {
+          const newSessionId = uuidv4();
+          const newSession: Session = {
+            id: newSessionId,
+            conversations: []
+          };
+
+          if (userId) {
+            const response = await axios.post('/api/set-session', {
+              sessions: [newSession]
+            }, {
+              headers: {
+                'x-user-id': userId
+              }
+            });
+
+            if (response.data.success) {
+              setSessions([newSession]);
+              setCurrentSessionId(newSessionId);
+              setShowInitialQuestions(true);
+              currentQuestionRef.current = "";
+            } else {
+              throw new Error('Failed to create new session');
+            }
+          }
+        } catch (error) {
+          console.error('Error initializing new session:', error);
+          setError('Failed to create new session');
+          
+          // Try to recover state
+          await recoverState();
+        }
+      };
+
+      initializeNewSession();
+    }
+  }, [userId]); // Only depend on userId
+
+  // Update manageSession
+  const manageSession = useCallback(async () => {
+    try {
+      // Clear existing state
       setCurrentConversation([]);
       setShowInitialQuestions(true);
       setProcessingQuery("");
@@ -492,64 +568,32 @@ export default function ChatPage() {
         } else {
           throw new Error('Failed to save new session');
         }
+      } else {
+        setSessions(prevSessions => [...prevSessions, newSession]);
+        setCurrentSessionId(newSessionId);
+        setShowInitialQuestions(true);
+        currentQuestionRef.current = "";
       }
     } catch (error) {
       console.error('Error in manageSession:', error);
       setError('Failed to create new session');
+      
+      // Try to recover state
+      await recoverState();
     }
-  }, [userId, setSessions, setCurrentSessionId]);
+  }, [userId, setSessions, setCurrentSessionId, recoverState]);
 
-  const handleNewConversation: () => Promise<void> = useCallback(async () => {
-    try {
-      const newSession = { id: crypto.randomUUID(), conversations: [] };
-      const url = new URL(window.location.href);
-      url.searchParams.set('session', 'new');
-      window.history.pushState({}, '', url.toString());
-      await manageSession();
-    } catch (error) {
-      console.error('Error creating new conversation:', error);
-      setError('Failed to create new conversation');
-    }
+  // Update handleNewConversation to use manageSession
+  const handleNewConversation = useCallback(() => {
+    manageSession();
   }, [manageSession]);
 
-  const recoverState: () => Promise<void> = useCallback(async () => {
-    if (!userId) return;
-    
-    try {
-      const response = await axios.get('/api/get-session', {
-        headers: {
-          'x-user-id': userId
-        }
-      });
-
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        setSessions(response.data);
-        
-        const urlParams = new URLSearchParams(window.location.search);
-        const sessionParam = urlParams.get('session');
-        
-        if (sessionParam === 'new') {
-          await handleNewConversation();
-        } else if (sessionParam) {
-          const sessionExists = response.data.some(s => s.id === sessionParam);
-          if (sessionExists) {
-            const session = response.data.find(s => s.id === sessionParam);
-            setCurrentSessionId(sessionParam);
-            setCurrentConversation(session.conversations || []);
-            setShowInitialQuestions(session.conversations.length === 0);
-          }
-        } else {
-          const lastSession = response.data[0];
-          setCurrentSessionId(lastSession.id);
-          setCurrentConversation(lastSession.conversations || []);
-          setShowInitialQuestions(lastSession.conversations.length === 0);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to recover state:', error);
-      setError('Failed to load chat history');
+  // Add effect to create new session on page load/refresh
+  useEffect(() => {
+    if (userId) {
+      manageSession();
     }
-  }, [userId, setSessions, setCurrentSessionId, handleNewConversation]);
+  }, [userId, manageSession]);
 
   // Other states
   const [showInitialQuestions, setShowInitialQuestions] = useState(true);
@@ -948,19 +992,14 @@ export default function ChatPage() {
     }, 100);
   };
 
-  const handleSessionSelect = useCallback((sessionId: string) => {
-    // Update URL with selected session ID
-    const url = new URL(window.location.href);
-    url.searchParams.set('session', sessionId);
-    window.history.pushState({}, '', url.toString());
-    
-    setCurrentSessionId(sessionId);
+  const handleSessionSelect = (sessionId: string) => {
     const selectedSession = sessions.find(session => session.id === sessionId);
     if (selectedSession) {
+      setCurrentSessionId(sessionId);
       setCurrentConversation(selectedSession.conversations);
       setShowInitialQuestions(selectedSession.conversations.length === 0);
     }
-  }, [sessions]);
+  };
 
   const saveSessionsToDB = async (updatedSessions: Session[]) => {
     if (!userId) {
@@ -1012,6 +1051,13 @@ export default function ChatPage() {
       setError('Failed to save chat history');
     }
   };
+
+  // Add recovery effect
+  useEffect(() => {
+    if (userId && (!sessions.length || !currentSessionId)) {
+      recoverState();
+    }
+  }, [userId, sessions.length, currentSessionId, recoverState]);
 
   // Main render
   return (
