@@ -252,8 +252,12 @@ const ConversationItem = ({ conv, index, isLatest }: {
       <div className="mt-6">
         <h3 className="text-lg font-semibold mb-4">Related Videos</h3>
         <div className="relative">
-          <div className="overflow-x-auto custom-scrollbar scroll-smooth">
-            <div className="flex gap-4 pb-4 min-w-min">
+          <div className="overflow-x-scroll" style={{ 
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#888 #f1f1f1',
+            WebkitOverflowScrolling: 'touch'
+          }}>
+            <div className="flex gap-4 pb-4">
               {allVideos.map((video, index) => {
                 const videoId = getYoutubeVideoIds([video.urls[0]])[0];
                 if (!videoId) return null;
@@ -352,10 +356,18 @@ const ConversationItem = ({ conv, index, isLatest }: {
           <h3 className="text-base font-semibold mb-3" style={{ fontFamily: systemFontFamily }}>
             Related Products
           </h3>
-          <div className="flex overflow-x-auto space-x-4 pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-            {conv.related_products.map((product, idx) => (
-              <ProductCard key={idx} product={product} />
-            ))}
+          <div className="relative">
+            <div className="overflow-x-scroll" style={{ 
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#888 #f1f1f1',
+              WebkitOverflowScrolling: 'touch'
+            }}>
+              <div className="flex gap-4 pb-4">
+                {conv.related_products.map((product, idx) => (
+                  <ProductCard key={idx} product={product} />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
