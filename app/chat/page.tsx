@@ -462,84 +462,8 @@ export default function ChatPage() {
   const [wsError, setWsError] = useState<string | null>(null);
 
   // Add recovery mechanism
-  const recoverState = useCallback(async () => {
-    if (!userId) return;
-    
+  const manageSession: () => Promise<void> = useCallback(async () => {
     try {
-      const response = await axios.get('/api/get-session', {
-        headers: {
-          'x-user-id': userId
-        }
-      });
-
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        setSessions(response.data);
-        const lastSession = response.data[response.data.length - 1];
-        setCurrentSessionId(lastSession.id);
-        setCurrentConversation(lastSession.conversations || []);
-        setShowInitialQuestions(!(lastSession.conversations?.length > 0));
-      }
-    } catch (error) {
-      console.error('Failed to recover state:', error);
-      setError('Failed to load chat history');
-    }
-  }, [userId, setSessions, setCurrentSessionId]);
-
-  // Add effect to create new session on page load/refresh
-  useEffect(() => {
-    if (userId) {
-      // Clear any existing session data first
-      setCurrentConversation([]);
-      setShowInitialQuestions(true);
-      setProcessingQuery("");
-      setSearchQuery("");
-      setLoadingProgress(0);
-      setIsStreaming(false);
-      
-      // Create a new session
-      const initializeNewSession = async () => {
-        try {
-          const newSessionId = uuidv4();
-          const newSession: Session = {
-            id: newSessionId,
-            conversations: []
-          };
-
-          if (userId) {
-            const response = await axios.post('/api/set-session', {
-              sessions: [newSession]
-            }, {
-              headers: {
-                'x-user-id': userId
-              }
-            });
-
-            if (response.data.success) {
-              setSessions([newSession]);
-              setCurrentSessionId(newSessionId);
-              setShowInitialQuestions(true);
-              currentQuestionRef.current = "";
-            } else {
-              throw new Error('Failed to create new session');
-            }
-          }
-        } catch (error) {
-          console.error('Error initializing new session:', error);
-          setError('Failed to create new session');
-          
-          // Try to recover state
-          await recoverState();
-        }
-      };
-
-      initializeNewSession();
-    }
-  }, [userId]); // Only depend on userId
-
-  // Update manageSession
-  const manageSession = useCallback(async () => {
-    try {
-      // Clear existing state
       setCurrentConversation([]);
       setShowInitialQuestions(true);
       setProcessingQuery("");
@@ -568,32 +492,64 @@ export default function ChatPage() {
         } else {
           throw new Error('Failed to save new session');
         }
-      } else {
-        setSessions(prevSessions => [...prevSessions, newSession]);
-        setCurrentSessionId(newSessionId);
-        setShowInitialQuestions(true);
-        currentQuestionRef.current = "";
       }
     } catch (error) {
       console.error('Error in manageSession:', error);
       setError('Failed to create new session');
-      
-      // Try to recover state
-      await recoverState();
     }
-  }, [userId, setSessions, setCurrentSessionId, recoverState]);
+  }, [userId, setSessions, setCurrentSessionId]);
 
-  // Update handleNewConversation to use manageSession
-  const handleNewConversation = useCallback(() => {
-    manageSession();
+  const handleNewConversation: () => Promise<void> = useCallback(async () => {
+    try {
+      const newSession = { id: crypto.randomUUID(), conversations: [] };
+      const url = new URL(window.location.href);
+      url.searchParams.set('session', 'new');
+      window.history.pushState({}, '', url.toString());
+      await manageSession();
+    } catch (error) {
+      console.error('Error creating new conversation:', error);
+      setError('Failed to create new conversation');
+    }
   }, [manageSession]);
 
-  // Add effect to create new session on page load/refresh
-  useEffect(() => {
-    if (userId) {
-      manageSession();
+  const recoverState: () => Promise<void> = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      const response = await axios.get('/api/get-session', {
+        headers: {
+          'x-user-id': userId
+        }
+      });
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setSessions(response.data);
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionParam = urlParams.get('session');
+        
+        if (sessionParam === 'new') {
+          await handleNewConversation();
+        } else if (sessionParam) {
+          const sessionExists = response.data.some(s => s.id === sessionParam);
+          if (sessionExists) {
+            const session = response.data.find(s => s.id === sessionParam);
+            setCurrentSessionId(sessionParam);
+            setCurrentConversation(session.conversations || []);
+            setShowInitialQuestions(session.conversations.length === 0);
+          }
+        } else {
+          const lastSession = response.data[0];
+          setCurrentSessionId(lastSession.id);
+          setCurrentConversation(lastSession.conversations || []);
+          setShowInitialQuestions(lastSession.conversations.length === 0);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to recover state:', error);
+      setError('Failed to load chat history');
     }
-  }, [userId, manageSession]);
+  }, [userId, setSessions, setCurrentSessionId, handleNewConversation]);
 
   // Other states
   const [showInitialQuestions, setShowInitialQuestions] = useState(true);
@@ -839,84 +795,91 @@ export default function ChatPage() {
   );
 
   // Replace the existing renderConversations function
-  const renderConversations = () => (
-    <div className="relative">
-      <div
-        ref={containerRef}
-        className="w-full overflow-y-auto scrollbar-none"
-        style={{ 
-          height: 'calc(100vh - 200px)',
-          paddingBottom: '80px',
-          msOverflowStyle: 'none',
-          scrollbarWidth: 'none'
-        }}
-      >
-        <style jsx global>{`
-          div::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
+  const renderConversations = () => {
+    const messageId = messages.length > 0 ? messages[messages.length - 1].id : 'default';
+    
+    return (
+      <div className="relative" key="conversations-container">
+        <div
+          ref={containerRef}
+          className="w-full overflow-y-auto scrollbar-none"
+          style={{ 
+            height: 'calc(100vh - 200px)',
+            paddingBottom: '80px',
+            msOverflowStyle: 'none',
+            scrollbarWidth: 'none'
+          }}
+        >
+          <style jsx global>{`
+            div::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
 
-        {/* Existing conversation items */}
-        {currentConversation.map((conv, index) => (
-          <ConversationItem 
-            key={conv.id}
-            conv={conv}
-            index={index}
-            isLatest={false}
-          />
-        ))}
+          {/* Map over conversations */}
+          {currentConversation.map((conv, index) => (
+            <ConversationItem 
+              key={`conv-${conv.id}-${index}`}
+              conv={conv}
+              index={index}
+              isLatest={conv.id === currentConversation[currentConversation.length - 1]?.id}
+            />
+          ))}
 
-        {/* Show ProcessingCard during initial loading */}
-        {isLoading && !isStreaming && (
-          <ProcessingCard 
-            query={processingQuery}
-            loadingProgress={loadingProgress}
-            setLoadingProgress={setLoadingProgress}
-          />
-        )}
+          {/* Processing card */}
+          {isLoading && !isStreaming && (
+            <ProcessingCard 
+              key={`processing-${Date.now()}`}
+              query={processingQuery}
+              loadingProgress={loadingProgress}
+              setLoadingProgress={setLoadingProgress}
+            />
+          )}
 
-        {/* Streaming response */}
-        {(isStreaming || isSecondResponseLoading) && messages.length > 0 && (
-          <div className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
-            {/* Question Section */}
-            <div className="mb-4 pb-4 border-b">
-              <div className="flex items-center gap-2">
-                <p className="text-gray-800 break-words font-bold" style={{ fontFamily: systemFontFamily }}>
-                  {processingQuery}
-                </p>
+          {/* Streaming response */}
+          {(isStreaming || isSecondResponseLoading) && messages.length > 0 && (
+            <div key={`streaming-${messageId}`} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
+              <div className="mb-4 pb-4 border-b">
+                <div className="flex items-center gap-2">
+                  <p className="text-gray-800 break-words font-bold" style={{ fontFamily: systemFontFamily }}>
+                    {processingQuery}
+                  </p>
+                </div>
               </div>
+
+              <div className="prose prose-sm max-w-none mb-4">
+                <div className="text-base leading-relaxed" style={{ fontFamily: systemFontFamily }}>
+                  <FixedMarkdownRenderer 
+                    key={`markdown-${messageId}`}
+                    content={messages[messages.length - 1].content} 
+                  />
+                </div>
+              </div>
+
+              {isSecondResponseLoading && (
+                <div key={`loading-state-${messageId}`} className="mt-6">
+                  <LoadingState />
+                </div>
+              )}
             </div>
+          )}
 
-            {/* Streaming Answer Section */}
-            <div className="prose prose-sm max-w-none mb-4">
-              <div className="text-base leading-relaxed" style={{ fontFamily: systemFontFamily }}>
-                <FixedMarkdownRenderer content={messages[messages.length - 1].content} />
-              </div>
-            </div>
-
-            {/* Loading state for additional content */}
-            {isSecondResponseLoading && (
-              <div className="mt-6">
-                <LoadingState />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Floating scroll button */}
-        {showScrollButton && (isStreaming || isSecondResponseLoading) && (
-          <button
-            onClick={scrollToBottom}
-            className="fixed bottom-24 right-8 bg-gray-800 text-white rounded-full p-3 shadow-lg hover:bg-gray-700 transition-colors z-50 flex items-center gap-2"
-          >
-            <ArrowDown className="w-5 h-5" />
-            <span className="text-sm font-medium pr-2">New content</span>
-          </button>
-        )}
+          {/* Floating scroll button */}
+          {showScrollButton && (isStreaming || isSecondResponseLoading) && (
+            <button
+              key={`scroll-button-${messageId}`}
+              onClick={scrollToBottom}
+              type="button"
+              className="fixed bottom-24 right-8 bg-gray-800 text-white rounded-full p-3 shadow-lg hover:bg-gray-700 transition-colors z-50 flex items-center gap-2"
+            >
+              <ArrowDown className="w-5 h-5" />
+              <span className="text-sm font-medium pr-2">New content</span>
+            </button>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Effects
   useEffect(() => {
@@ -985,14 +948,19 @@ export default function ChatPage() {
     }, 100);
   };
 
-  const handleSessionSelect = (sessionId: string) => {
+  const handleSessionSelect = useCallback((sessionId: string) => {
+    // Update URL with selected session ID
+    const url = new URL(window.location.href);
+    url.searchParams.set('session', sessionId);
+    window.history.pushState({}, '', url.toString());
+    
+    setCurrentSessionId(sessionId);
     const selectedSession = sessions.find(session => session.id === sessionId);
     if (selectedSession) {
-      setCurrentSessionId(sessionId);
       setCurrentConversation(selectedSession.conversations);
       setShowInitialQuestions(selectedSession.conversations.length === 0);
     }
-  };
+  }, [sessions]);
 
   const saveSessionsToDB = async (updatedSessions: Session[]) => {
     if (!userId) {
@@ -1044,13 +1012,6 @@ export default function ChatPage() {
       setError('Failed to save chat history');
     }
   };
-
-  // Add recovery effect
-  useEffect(() => {
-    if (userId && (!sessions.length || !currentSessionId)) {
-      recoverState();
-    }
-  }, [userId, sessions.length, currentSessionId, recoverState]);
 
   // Main render
   return (
