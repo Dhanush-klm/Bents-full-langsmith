@@ -43,6 +43,8 @@ interface UseSessionReturn {
   setCurrentSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   isLoading: boolean;
   error: string | null;
+  updateSessionConversations: (sessionId: string, conversation: Conversation) => Promise<Conversation[] | null>;
+  createNewSession: () => Promise<string>;
 }
 
 export function useSession(): UseSessionReturn {
@@ -52,6 +54,7 @@ export function useSession(): UseSessionReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Load sessions from database
   useEffect(() => {
     const loadSessions = async () => {
       if (!userId) {
@@ -68,8 +71,14 @@ export function useSession(): UseSessionReturn {
         const savedSessions = response.data;
 
         if (Array.isArray(savedSessions) && savedSessions.length > 0) {
-          setSessions(savedSessions);
-          // Don't set currentSessionId here - let the page create a new one
+          // Sort sessions by most recent conversation
+          const sortedSessions = savedSessions.sort((a, b) => {
+            const aTime = a.conversations[0]?.timestamp || '0';
+            const bTime = b.conversations[0]?.timestamp || '0';
+            return new Date(bTime).getTime() - new Date(aTime).getTime();
+          });
+          
+          setSessions(sortedSessions);
         }
       } catch (error) {
         console.error('Error loading sessions:', error);
@@ -82,26 +91,62 @@ export function useSession(): UseSessionReturn {
     loadSessions();
   }, [userId]);
 
-  const updateSessions = useCallback(async (newSessions: Session[]) => {
-    if (!userId || !Array.isArray(newSessions)) return;
+  const updateSessionConversations = useCallback(async (
+    sessionId: string,
+    newConversation: Conversation
+  ): Promise<Conversation[] | null> => {
+    if (!userId) return null;
 
-    const validSessions = newSessions.filter(session => 
-      session && session.id && Array.isArray(session.conversations)
-    );
-
-    if (validSessions.length > 0) {
-      setSessions(validSessions);
-      try {
-        await axios.post('/api/set-session', 
-          { sessions: validSessions },
-          { headers: { 'x-user-id': userId } }
-        );
-      } catch (error) {
-        console.error('Failed to update sessions:', error);
-        setError('Failed to save chat history');
+    const updatedSessions = sessions.map(session => {
+      if (session.id === sessionId) {
+        return {
+          ...session,
+          conversations: [...session.conversations, newConversation]
+        };
       }
+      return session;
+    });
+
+    try {
+      await axios.post('/api/set-session', 
+        { sessions: updatedSessions },
+        { headers: { 'x-user-id': userId } }
+      );
+      
+      setSessions(updatedSessions);
+      const currentSession = updatedSessions.find(s => s.id === sessionId);
+      return currentSession?.conversations || null;
+    } catch (error) {
+      console.error('Failed to update sessions:', error);
+      setError('Failed to save chat history');
+      return null;
     }
-  }, [userId]);
+  }, [userId, sessions]);
+
+  // Add new function to handle creating new conversations
+  const createNewSession = useCallback(async () => {
+    const newSession = { 
+      id: crypto.randomUUID(), 
+      conversations: [] 
+    };
+    
+    // Add new session to the beginning of the array
+    const updatedSessions = [newSession, ...sessions];
+    setSessions(updatedSessions);
+    setCurrentSessionId(newSession.id);
+
+    try {
+      await axios.post('/api/set-session',
+        { sessions: updatedSessions },
+        { headers: { 'x-user-id': userId } }
+      );
+    } catch (error) {
+      console.error('Failed to create new session:', error);
+      setError('Failed to create new chat');
+    }
+
+    return newSession.id;
+  }, [userId, sessions]);
 
   return {
     sessions,
@@ -109,6 +154,8 @@ export function useSession(): UseSessionReturn {
     currentSessionId,
     setCurrentSessionId,
     isLoading,
-    error
+    error,
+    updateSessionConversations,
+    createNewSession
   };
 } 
