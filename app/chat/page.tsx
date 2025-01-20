@@ -463,7 +463,9 @@ export default function ChatPage() {
     currentSessionId,
     setCurrentSessionId,
     isLoading: sessionsLoading,
-    error: sessionsError
+    error: sessionsError,
+    updateSessionConversations,
+    createNewSession
   } = useSession();
 
   // Initialize with empty values
@@ -596,9 +598,9 @@ export default function ChatPage() {
   }, [userId, setSessions, setCurrentSessionId, recoverState]);
 
   // Update handleNewConversation to use manageSession
-  const handleNewConversation = useCallback(() => {
-    manageSession();
-  }, [manageSession]);
+  const handleNewConversation = async () => {
+    await createNewSession();
+  };
 
   // Add effect to create new session on page load/refresh
   useEffect(() => {
@@ -656,12 +658,6 @@ export default function ChatPage() {
           answer: message.content
         });
         
-        if (linksResponse.data.status === 'not_relevant') {
-          setIsSecondResponseLoading(false);
-          return;
-        }
-        
-        // Create new conversation
         const newConversation = {
           id: uuidv4(),
           question: currentQuestion,
@@ -671,38 +667,15 @@ export default function ChatPage() {
           related_products: linksResponse.data.relatedProducts || []
         };
 
-        // Find and update the current session
-        const currentSession = sessions.find(s => s.id === currentSessionId);
-        if (currentSession) {
-          const updatedSession = {
-            ...currentSession,
-            conversations: [...(currentSession.conversations || []), newConversation]
-          };
-          
-          try {
-            // Save to database first
-            if (userId) {
-              await saveSessionsToDB([updatedSession]);
-            }
-            
-            // Only update local state if save was successful
-            setSessions(prevSessions => 
-              prevSessions.map(s => 
-                s.id === currentSessionId ? updatedSession : s
-              )
-            );
-            setCurrentConversation(updatedSession.conversations);
-          } catch (error) {
-            console.error('Failed to save session:', error);
-            // Try to recover state
-            await recoverState();
-          }
+        // Single update to sessions and conversation state
+        const allConversations = await updateSessionConversations(currentSessionId, newConversation);
+        
+        if (allConversations) {
+          setCurrentConversation(allConversations);
         }
       } catch (error) {
         console.error('Error in onFinish:', error);
         setError('Error updating chat history');
-        // Try to recover state
-        await recoverState();
       } finally {
         setIsSecondResponseLoading(false);
         setProcessingQuery("");
@@ -1043,8 +1016,8 @@ export default function ChatPage() {
         return;
       }
 
-      const response = await axios.post('/api/set-session', { 
-        sessions: [currentSession] // Only save the current session
+      const response = await axios.post('/api/set-session', 
+        { sessions: [currentSession] // Only save the current session
       }, {
         headers: {
           'x-user-id': userId
