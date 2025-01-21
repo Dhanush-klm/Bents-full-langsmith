@@ -1252,9 +1252,21 @@ export default function ChatPage() {
 
   // Modify your useEffect hooks in the chat page component
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) {
+      // Clear local storage when user is not logged in
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.SESSIONS);
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.CURRENT_SESSION_ID);
+      localStorage.removeItem(LOCAL_STORAGE_KEYS.CURRENT_CONVERSATION);
+      
+      // Reset states
+      setSessions([]);
+      setCurrentSessionId(null);
+      setCurrentConversation([]);
+      setShowInitialQuestions(true);
+      return;
+    }
 
-    // Load local storage data first
+    // Load local storage data only if user is logged in
     const localSessions = getLocalStorage(LOCAL_STORAGE_KEYS.SESSIONS, []);
     const localCurrentSessionId = getLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_SESSION_ID, null);
     const localCurrentConversation = getLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_CONVERSATION, []);
@@ -1270,22 +1282,34 @@ export default function ChatPage() {
 
   // Add effect to update local storage when sessions change
   useEffect(() => {
+    if (!userId) {
+      return; // Don't save to local storage if user is not logged in
+    }
+    
     if (sessions.length > 0) {
       setLocalStorage(LOCAL_STORAGE_KEYS.SESSIONS, sessions);
     }
-  }, [sessions]);
+  }, [sessions, userId]);
 
   // Add effect to update local storage when current session changes
   useEffect(() => {
+    if (!userId) {
+      return; // Don't save to local storage if user is not logged in
+    }
+
     if (currentSessionId) {
       setLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_SESSION_ID, currentSessionId);
     }
-  }, [currentSessionId]);
+  }, [currentSessionId, userId]);
 
   // Add effect to update local storage when current conversation changes
   useEffect(() => {
+    if (!userId) {
+      return; // Don't save to local storage if user is not logged in
+    }
+
     setLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_CONVERSATION, currentConversation);
-  }, [currentConversation]);
+  }, [currentConversation, userId]);
 
   // Main render
   return (
