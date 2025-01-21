@@ -1218,17 +1218,7 @@ export default function ChatPage() {
               onNewConversation={handleNewConversation}
             />
             
-            {/* History button moved to left side */}
-            <div className="fixed top-4 left-4 z-50">
-              <Button
-                variant="outline"
-                onClick={() => setIsHistoryOpen(true)}
-                className="flex items-center gap-2"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span>History</span>
-              </Button>
-            </div>
+            
 
             {/* ChatSidebar remains unchanged */}
             <ChatSidebar
