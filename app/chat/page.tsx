@@ -739,7 +739,6 @@ export default function ChatPage() {
           answer: message.content
         });
         
-        // Create new conversation with response
         const newConversation = {
           id: uuidv4(),
           question: currentQuestion,
@@ -749,39 +748,65 @@ export default function ChatPage() {
           related_products: linksResponse.data.relatedProducts || []
         };
 
-        // Update current conversation
-        setCurrentConversation(prev => [...prev, newConversation]);
-
-        // Update session
-        if (currentSessionId) {
+        // Update both database and local state
+        if (userId) {
           const updatedSession = {
             id: currentSessionId,
             conversations: [...currentConversation, newConversation]
           };
-          
-          try {
-            if (userId) {
-              await saveSessionsToDB([updatedSession]);
+
+          // Update database
+          await axios.post('/api/set-session', { 
+            sessions: [updatedSession] 
+          }, {
+            headers: {
+              'x-user-id': userId
             }
-            setSessions(prevSessions => 
-              prevSessions.map(s => 
-                s.id === currentSessionId ? updatedSession : s
-              )
-            );
-          } catch (error) {
-            console.error('Failed to save session:', error);
-            setError('Error updating chat history');
-          }
+          });
+
+          // Update local state
+          setSessions(prevSessions => 
+            prevSessions.map(s => 
+              s.id === currentSessionId ? updatedSession : s
+            )
+          );
+          setCurrentConversation(prev => [...prev, newConversation]);
         }
       } catch (error) {
         console.error('Error in onFinish:', error);
         setError('Error updating chat history');
+        // Attempt to recover state
+        await recoverState();
       } finally {
         setIsSecondResponseLoading(false);
         setProcessingQuery("");
       }
     }
   });
+
+  // Add recoverState function
+  const recoverState = useCallback(async () => {
+    if (!userId) return;
+    
+    try {
+      const response = await axios.get('/api/get-session', {
+        headers: {
+          'x-user-id': userId
+        }
+      });
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        setSessions(response.data);
+        const lastSession = response.data[response.data.length - 1];
+        setCurrentSessionId(lastSession.id);
+        setCurrentConversation(lastSession.conversations || []);
+        setShowInitialQuestions(!(lastSession.conversations?.length > 0));
+      }
+    } catch (error) {
+      console.error('Failed to recover state:', error);
+      setError('Failed to load chat history');
+    }
+  }, [userId, setSessions, setCurrentSessionId]);
 
   // Add check if near bottom function
   const checkIfNearBottom = useCallback(() => {
@@ -849,7 +874,7 @@ export default function ChatPage() {
     }
   }, [isStreaming]);
 
-  // Update handleSearch
+  // Update handleSearch to include error handling and state recovery
   const handleSearch = async (e: React.FormEvent | null, index?: number) => {
     if (e) e.preventDefault();
     const query = index !== undefined ? randomQuestions[index] : searchQuery;
@@ -861,7 +886,6 @@ export default function ChatPage() {
     setShowInitialQuestions(false);
     
     try {
-      // If there's no current session, create one
       if (!currentSessionId) {
         await manageSession();
       }
@@ -880,6 +904,7 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Search Error:', error);
       setError('Error processing your request');
+      await recoverState();
     }
   };
 
