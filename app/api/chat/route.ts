@@ -223,10 +223,16 @@ export async function POST(req: Request) {
       if (relevanceResult === 'NOT_RELEVANT') {
         const result = await streamText({
           model: openai('gpt-4o-mini'),
-          messages: [{ 
-            role: 'user',
-            content: `The following message is not related to woodworking or our services. Please politely redirect the conversation: ${lastUserMessage}`
-          }],
+          messages: [
+            {
+              role: 'user',
+              content: `The following question is not directly related to woodworking or the assistant's expertise. Provide a direct response that:
+              1. Politely acknowledges the question
+              2. Explains that you are specialized in woodworking and Jason Bent's content
+              3. Asks them to rephrase their question to relate to woodworking topics
+              Question: ${lastUserMessage}`
+            }
+          ],
         });
         return result.toDataStreamResponse();
       }
