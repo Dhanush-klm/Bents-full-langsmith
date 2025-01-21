@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowRight, PlusCircle, ArrowDown } from 'lucide-react';
+import { ArrowRight, PlusCircle, ArrowDown, X, BookOpen } from 'lucide-react';
 import { useChat } from 'ai/react';
 import { Button } from "@/components/ui/button";
 import { v4 as uuidv4 } from 'uuid';
@@ -13,6 +13,7 @@ import Header from '@/components/Header';
 import YouTube from 'react-youtube';
 import { useAuth } from '@clerk/nextjs';
 import { useSession } from '@/lib/hooks/useSession';
+import { format } from 'date-fns';
 
 // Types
 interface Conversation {
@@ -71,13 +72,11 @@ interface ActiveQuery {
 }
 
 // Constants
-const LOCAL_STORAGE_KEY = 'chat_sessions';
-const processingSteps = [
-  "Understanding query",
-  "Searching knowledge base",
-  "Processing data",
-  "Generating answer"
-];
+const LOCAL_STORAGE_KEYS = {
+  SESSIONS: 'chat_sessions',
+  CURRENT_SESSION_ID: 'current_session_id',
+  CURRENT_CONVERSATION: 'current_conversation'
+};
 
 // Font family constant
 const systemFontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
@@ -454,18 +453,156 @@ const ProcessingCard = ({
   );
 };
 
+// Add this near the top where other components are defined
+const ConversationHistoryButton = ({ 
+  sessions,
+  currentSessionId,
+  onSessionSelect,
+  onNewConversation 
+}: { 
+  sessions: Session[];
+  currentSessionId: string;
+  onSessionSelect: (id: string) => void;
+  onNewConversation: () => void;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2"
+      >
+        <span>History</span>
+      </Button>
+
+      {isOpen && (
+        <>
+          <div 
+            className="fixed inset-0 bg-black/20" 
+            onClick={() => setIsOpen(false)}
+          />
+          <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border overflow-hidden z-50">
+            <div className="p-2">
+              <Button
+                onClick={() => {
+                  onNewConversation();
+                  setIsOpen(false);
+                }}
+                className="w-full justify-start text-left mb-2"
+                variant="ghost"
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                New Conversation
+              </Button>
+              <div className="space-y-1 max-h-96 overflow-y-auto">
+                {sessions.map((session) => (
+                  <Button
+                    key={session.id}
+                    onClick={() => {
+                      onSessionSelect(session.id);
+                      setIsOpen(false);
+                    }}
+                    variant={session.id === currentSessionId ? "secondary" : "ghost"}
+                    className="w-full justify-start text-left"
+                  >
+                    {session.conversations?.[0]?.question || "New Conversation"}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Add this near the ConversationHistoryButton component
+const ChatSidebar = ({ 
+  isOpen, 
+  onClose,
+  sessions,
+  currentSessionId,
+  onSessionSelect,
+  onNewConversation
+}: { 
+  isOpen: boolean;
+  onClose: () => void;
+  sessions: Session[];
+  currentSessionId: string | null;
+  onSessionSelect: (sessionId: string) => void;
+  onNewConversation: () => void;
+}) => {
+  return (
+    <>
+      {isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50">
+          <div className="fixed top-0 left-0 h-full w-80 bg-white transform transition-transform duration-300 ease-in-out overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold">Chat History</h2>
+                <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <button
+                  onClick={() => {
+                    onNewConversation();
+                    onClose();
+                  }}
+                  className="w-full px-4 py-2 text-white bg-[rgba(23,155,215,255)] rounded-md hover:bg-[rgba(20,139,193,255)]"
+                >
+                  New Chat
+                </button>
+
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    onClick={() => {
+                      onSessionSelect(session.id);
+                      onClose();
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg cursor-pointer transition-all",
+                      "hover:bg-gray-100",
+                      session.id === currentSessionId ? "bg-gray-100" : "bg-white",
+                      "border border-gray-200"
+                    )}
+                  >
+                    <p className="font-medium text-gray-900 line-clamp-2">
+                      {session.conversations[0]?.question || "New conversation"}
+                    </p>
+                    {session.conversations[0]?.timestamp && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        {format(new Date(session.conversations[0].timestamp), 'MMM d, yyyy')}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 // Main Chat Page Component
 export default function ChatPage() {
   const { userId = null } = useAuth();
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const {
     sessions,
     setSessions,
     currentSessionId,
     setCurrentSessionId,
     isLoading: sessionsLoading,
-    error: sessionsError,
-    updateSessionConversations,
-    createNewSession
+    error: sessionsError
   } = useSession();
 
   // Initialize with empty values
@@ -475,42 +612,9 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
 
-  // Add recovery mechanism
-  const recoverState = useCallback(async () => {
-    if (!userId) return;
-    
-    try {
-      const response = await axios.get('/api/get-session', {
-        headers: {
-          'x-user-id': userId
-        }
-      });
-
-      if (Array.isArray(response.data) && response.data.length > 0) {
-        setSessions(response.data);
-        const lastSession = response.data[response.data.length - 1];
-        setCurrentSessionId(lastSession.id);
-        setCurrentConversation(lastSession.conversations || []);
-        setShowInitialQuestions(!(lastSession.conversations?.length > 0));
-      }
-    } catch (error) {
-      console.error('Failed to recover state:', error);
-      setError('Failed to load chat history');
-    }
-  }, [userId, setSessions, setCurrentSessionId]);
-
-  // Add effect to create new session on page load/refresh
+  // Add effect to handle page load/refresh
   useEffect(() => {
     if (userId) {
-      // Clear any existing session data first
-      setCurrentConversation([]);
-      setShowInitialQuestions(true);
-      setProcessingQuery("");
-      setSearchQuery("");
-      setLoadingProgress(0);
-      setIsStreaming(false);
-      
-      // Create a new session
       const initializeNewSession = async () => {
         try {
           const newSessionId = uuidv4();
@@ -519,38 +623,30 @@ export default function ChatPage() {
             conversations: []
           };
 
+          setSessions([newSession]);
+          setCurrentSessionId(newSessionId);
+          setShowInitialQuestions(true);
+          currentQuestionRef.current = "";
+          setCurrentConversation([]); // Clear current conversation
+          
           if (userId) {
-            const response = await axios.post('/api/set-session', {
+            await axios.post('/api/set-session', {
               sessions: [newSession]
             }, {
               headers: {
                 'x-user-id': userId
               }
             });
-
-            if (response.data.success) {
-              setSessions([newSession]);
-              setCurrentSessionId(newSessionId);
-              setShowInitialQuestions(true);
-              currentQuestionRef.current = "";
-            } else {
-              throw new Error('Failed to create new session');
-            }
           }
         } catch (error) {
           console.error('Error initializing new session:', error);
-          setError('Failed to create new session');
-          
-          // Try to recover state
-          await recoverState();
         }
       };
 
       initializeNewSession();
     }
-  }, [userId]); // Only depend on userId
+  }, [userId, setSessions, setCurrentSessionId]);
 
-  // Update manageSession
   const manageSession = useCallback(async () => {
     try {
       // Clear existing state
@@ -582,32 +678,17 @@ export default function ChatPage() {
         } else {
           throw new Error('Failed to save new session');
         }
-      } else {
-        setSessions(prevSessions => [...prevSessions, newSession]);
-        setCurrentSessionId(newSessionId);
-        setShowInitialQuestions(true);
-        currentQuestionRef.current = "";
       }
     } catch (error) {
       console.error('Error in manageSession:', error);
       setError('Failed to create new session');
-      
-      // Try to recover state
-      await recoverState();
     }
-  }, [userId, setSessions, setCurrentSessionId, recoverState]);
+  }, [userId, setSessions, setCurrentSessionId]);
 
   // Update handleNewConversation to use manageSession
-  const handleNewConversation = async () => {
-    await createNewSession();
-  };
-
-  // Add effect to create new session on page load/refresh
-  useEffect(() => {
-    if (userId) {
-      manageSession();
-    }
-  }, [userId, manageSession]);
+  const handleNewConversation = useCallback(() => {
+    manageSession();
+  }, [manageSession]);
 
   // Other states
   const [showInitialQuestions, setShowInitialQuestions] = useState(true);
@@ -658,6 +739,7 @@ export default function ChatPage() {
           answer: message.content
         });
         
+        // Create new conversation with response
         const newConversation = {
           id: uuidv4(),
           question: currentQuestion,
@@ -667,11 +749,29 @@ export default function ChatPage() {
           related_products: linksResponse.data.relatedProducts || []
         };
 
-        // Single update to sessions and conversation state
-        const allConversations = await updateSessionConversations(currentSessionId, newConversation);
-        
-        if (allConversations) {
-          setCurrentConversation(allConversations);
+        // Update current conversation
+        setCurrentConversation(prev => [...prev, newConversation]);
+
+        // Update session
+        if (currentSessionId) {
+          const updatedSession = {
+            id: currentSessionId,
+            conversations: [...currentConversation, newConversation]
+          };
+          
+          try {
+            if (userId) {
+              await saveSessionsToDB([updatedSession]);
+            }
+            setSessions(prevSessions => 
+              prevSessions.map(s => 
+                s.id === currentSessionId ? updatedSession : s
+              )
+            );
+          } catch (error) {
+            console.error('Failed to save session:', error);
+            setError('Error updating chat history');
+          }
         }
       } catch (error) {
         console.error('Error in onFinish:', error);
@@ -845,7 +945,7 @@ export default function ChatPage() {
             }
           `}</style>
 
-          {/* Map over conversations */}
+          {/* Map over completed conversations */}
           {currentConversation.map((conv, index) => (
             <ConversationItem 
               key={`conv-${conv.id}-${index}`}
@@ -855,18 +955,17 @@ export default function ChatPage() {
             />
           ))}
 
-          {/* Processing card */}
+          {/* Processing Card */}
           {isLoading && !isStreaming && (
-            <ProcessingCard 
-              key={`processing-${Date.now()}`}
+            <ProcessingCard
               query={processingQuery}
               loadingProgress={loadingProgress}
               setLoadingProgress={setLoadingProgress}
             />
           )}
 
-          {/* Streaming response */}
-          {(isStreaming || isSecondResponseLoading) && messages.length > 0 && (
+          {/* Single container for both streaming and processing states */}
+          {(isStreaming || isSecondResponseLoading) && messages.length > 0 && !currentConversation.find(conv => conv.question === processingQuery) && (
             <div key={`streaming-${messageId}`} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
               <div className="mb-4 pb-4 border-b">
                 <div className="flex items-center gap-2">
@@ -886,17 +985,19 @@ export default function ChatPage() {
               </div>
 
               {isSecondResponseLoading && (
-                <div key={`loading-state-${messageId}`} className="mt-6">
-                  <LoadingState />
+                <div className="mt-4">
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-[rgba(23,155,215,255)] border-t-transparent"></div>
+                    <span className="text-sm text-gray-500">Processing videos and products...</span>
+                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Floating scroll button */}
+          {/* Scroll button remains unchanged */}
           {showScrollButton && (isStreaming || isSecondResponseLoading) && (
             <button
-              key={`scroll-button-${messageId}`}
               onClick={scrollToBottom}
               type="button"
               className="fixed bottom-24 right-8 bg-gray-800 text-white rounded-full p-3 shadow-lg hover:bg-gray-700 transition-colors z-50 flex items-center gap-2"
@@ -1016,8 +1117,8 @@ export default function ChatPage() {
         return;
       }
 
-      const response = await axios.post('/api/set-session', 
-        { sessions: [currentSession] // Only save the current session
+      const response = await axios.post('/api/set-session', { 
+        sessions: [currentSession] // Only save the current session
       }, {
         headers: {
           'x-user-id': userId
@@ -1037,12 +1138,71 @@ export default function ChatPage() {
     }
   };
 
-  // Add recovery effect
-  useEffect(() => {
-    if (userId && (!sessions.length || !currentSessionId)) {
-      recoverState();
+  // Add these constants at the top of your chat page
+  const LOCAL_STORAGE_KEYS = {
+    SESSIONS: 'chat_sessions',
+    CURRENT_SESSION_ID: 'current_session_id',
+    CURRENT_CONVERSATION: 'current_conversation'
+  };
+
+  // Add this helper function
+  const getLocalStorage = (key: string, defaultValue: any) => {
+    if (typeof window === 'undefined') return defaultValue;
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (error) {
+      console.error(`Error reading ${key} from localStorage:`, error);
+      return defaultValue;
     }
-  }, [userId, sessions.length, currentSessionId, recoverState]);
+  };
+
+  // Add this helper function
+  const setLocalStorage = (key: string, value: any) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(`Error writing ${key} to localStorage:`, error);
+    }
+  };
+
+  // Modify your useEffect hooks in the chat page component
+  useEffect(() => {
+    if (!userId) return;
+
+    // Load local storage data first
+    const localSessions = getLocalStorage(LOCAL_STORAGE_KEYS.SESSIONS, []);
+    const localCurrentSessionId = getLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_SESSION_ID, null);
+    const localCurrentConversation = getLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_CONVERSATION, []);
+
+    // Only set states if we have existing data
+    if (localSessions.length > 0) {
+      setSessions(localSessions);
+      setCurrentSessionId(localCurrentSessionId);
+      setCurrentConversation(localCurrentConversation);
+      setShowInitialQuestions(localCurrentConversation.length === 0);
+    }
+  }, [userId]);
+
+  // Add effect to update local storage when sessions change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      setLocalStorage(LOCAL_STORAGE_KEYS.SESSIONS, sessions);
+    }
+  }, [sessions]);
+
+  // Add effect to update local storage when current session changes
+  useEffect(() => {
+    if (currentSessionId) {
+      setLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_SESSION_ID, currentSessionId);
+    }
+  }, [currentSessionId]);
+
+  // Add effect to update local storage when current conversation changes
+  useEffect(() => {
+    setLocalStorage(LOCAL_STORAGE_KEYS.CURRENT_CONVERSATION, currentConversation);
+  }, [currentConversation]);
 
   // Main render
   return (
@@ -1051,15 +1211,27 @@ export default function ChatPage() {
         <div className="absolute inset-0">
           <div className="min-h-screen">
             <Header 
+              userId={userId}
               sessions={sessions}
               currentSessionId={currentSessionId}
               onSessionSelect={handleSessionSelect}
               onNewConversation={handleNewConversation}
-              userId={userId}
+            />
+            
+            
+
+            {/* ChatSidebar remains unchanged */}
+            <ChatSidebar
+              isOpen={isHistoryOpen}
+              onClose={() => setIsHistoryOpen(false)}
+              sessions={sessions}
+              currentSessionId={currentSessionId}
+              onSessionSelect={handleSessionSelect}
+              onNewConversation={handleNewConversation}
             />
             
             {(error || wsError) && (
-              <div className="w-full px-4 mt-20 mb-4">
+              <div className="w-full px-4 mt-20 mb-4"> 
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
                   <strong className="font-bold">Error: </strong>
                   <span className="block sm:inline">{error || wsError}</span>
@@ -1295,3 +1467,10 @@ const SearchBar = ({
     </div>
   );
 };
+
+const processingSteps = [
+  "Analyzing your question",
+  "Searching relevant content",
+  "Processing information",
+  "Preparing response"
+];
