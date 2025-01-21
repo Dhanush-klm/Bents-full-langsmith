@@ -214,7 +214,7 @@ export async function POST(req: Request) {
           model: openai('gpt-4o-mini'),
           messages: [{ 
             role: 'user',
-            content: 'Please provide a polite response indicating that inappropriate content or language is not allowed.'
+            content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
           }],
         });
         return result.toDataStreamResponse();
