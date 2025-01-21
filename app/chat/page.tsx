@@ -916,7 +916,14 @@ export default function ChatPage() {
           <div className="space-y-4">
             {/* Video skeleton loader */}
             <div>
-              <h3 className="text-base font-semibold mb-2">Related Videos</h3>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="animate-pulse w-8 h-8 rounded-full bg-[rgba(23,155,215,255)]/20 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-[rgba(23,155,215,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-medium text-gray-900">Processing Related Videos</h3>
+              </div>
               <div className="flex overflow-x-auto space-x-4">
                 {[1, 2].map((i) => (
                   <div key={i} className="flex-none w-[280px] bg-white border rounded-lg overflow-hidden">
@@ -932,7 +939,14 @@ export default function ChatPage() {
             
             {/* Products skeleton loader */}
             <div>
-              <h3 className="text-base font-semibold mb-2">Related Products</h3>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="animate-pulse w-8 h-8 rounded-full bg-[rgba(23,155,215,255)]/20 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-[rgba(23,155,215,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                </div>
+                <h3 className="text-base font-medium text-gray-900">Finding Related Products</h3>
+              </div>
               <div className="flex overflow-x-auto space-x-4">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="flex-none min-w-[180px] bg-white border rounded-lg px-4 py-3">
@@ -1010,10 +1024,54 @@ export default function ChatPage() {
               </div>
 
               {isSecondResponseLoading && (
-                <div className="mt-4">
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-[rgba(23,155,215,255)] border-t-transparent"></div>
-                    <span className="text-sm text-gray-500">Processing videos and products...</span>
+                <div className="w-full">
+                  <div className="mt-4">
+                    <div className="bg-white rounded-lg p-4 mb-4">
+                      <div className="space-y-6">
+                        {/* Video skeleton loader */}
+                        <div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="animate-pulse w-8 h-8 rounded-full bg-[rgba(23,155,215,255)]/20 flex items-center justify-center">
+                              <svg className="w-4 h-4 text-[rgba(23,155,215,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </div>
+                            <h3 className="text-base font-medium text-gray-900">Processing Related Videos</h3>
+                          </div>
+                          <div className="flex overflow-x-auto space-x-4">
+                            {[1, 2].map((i) => (
+                              <div key={i} className="flex-none w-[280px] bg-white border rounded-lg overflow-hidden">
+                                <div className="aspect-video w-full bg-gray-200 animate-pulse" />
+                                <div className="p-3">
+                                  <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                                  <div className="h-4 bg-gray-200 rounded animate-pulse w-2/3" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        {/* Products skeleton loader */}
+                        <div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <div className="animate-pulse w-8 h-8 rounded-full bg-[rgba(23,155,215,255)]/20 flex items-center justify-center">
+                              <svg className="w-4 h-4 text-[rgba(23,155,215,255)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                              </svg>
+                            </div>
+                            <h3 className="text-base font-medium text-gray-900">Finding Related Products</h3>
+                          </div>
+                          <div className="flex overflow-x-auto space-x-4">
+                            {[1, 2, 3].map((i) => (
+                              <div key={i} className="flex-none min-w-[180px] bg-white border rounded-lg px-4 py-3">
+                                <div className="h-4 bg-gray-200 rounded animate-pulse mb-2" />
+                                <div className="h-4 bg-gray-200 rounded animate-pulse w-2/3" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1494,8 +1552,8 @@ const SearchBar = ({
 };
 
 const processingSteps = [
-  "Analyzing your question",
-  "Searching relevant content",
-  "Processing information",
-  "Preparing response"
+  "Understanding Query",
+  "Searching Knowledge Base",
+  "Processing Data",
+  "Generating Answer"
 ];
