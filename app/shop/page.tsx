@@ -187,14 +187,14 @@ export default function ShopPage() {
             </div>
             <div className="w-48 sm:w-[200px] self-start sm:self-auto">
               <Select value={sortOption} onValueChange={handleSort}>
-                <SelectTrigger className="w-full bg-white text-black rounded-[8px] border-gray-300">
+                <SelectTrigger className="w-full bg-white text-gray-500 rounded-[8px] border-gray-300">
                   <SelectValue placeholder="Sort" />
                 </SelectTrigger>
                 <SelectContent className="bg-white border shadow-lg z-50 rounded-[8px]">
-                  <SelectItem value="default" className="text-black bg-white hover:bg-gray-100 cursor-pointer">
+                  <SelectItem value="default" className="text-gray-500 bg-white hover:bg-gray-100 cursor-pointer">
                     Sort by
                   </SelectItem>
-                  <SelectItem value="video" className="text-black bg-white hover:bg-gray-100 cursor-pointer">
+                  <SelectItem value="video" className="text-gray-500 bg-white hover:bg-gray-100 cursor-pointer">
                     Sort by Video Title
                   </SelectItem>
                 </SelectContent>
