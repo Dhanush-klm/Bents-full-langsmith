@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
+
 
 const Footer = () => {
   return (
@@ -14,20 +14,18 @@ const Footer = () => {
           <nav>
             <ul className="flex space-x-4">
               <li>
-                <Link 
-                  href="/terms" 
+                <div 
                   className="text-sm hover:text-gray-300 transition-colors"
                 >
                   Terms of Service
-                </Link>
+                </div>
               </li>
               <li>
-                <Link 
-                  href="/privacy" 
+                <div 
                   className="text-sm hover:text-gray-300 transition-colors"
                 >
                   Privacy
-                </Link>
+                </div>
               </li>
             </ul>
           </nav>
