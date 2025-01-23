@@ -331,7 +331,7 @@ const ConversationItem = ({ conv, index, isLatest }: {
   };
 
   return (
-    <div ref={conversationRef} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
+    <div ref={conversationRef} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4 mt-16 sm:mt-0">
       {/* Question Section */}
       <div className="mb-4 pb-4 border-b">
         <div className="flex items-center gap-2">
@@ -408,7 +408,7 @@ const ProcessingCard = ({
   }, [loadingProgress, setLoadingProgress]);
 
   return (
-    <div ref={loadingCardRef} className="w-full bg-white rounded-lg p-6 mb-4">
+    <div ref={loadingCardRef} className="w-full bg-white rounded-lg p-6 mb-4 mt-16 sm:mt-0">
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Processing Your Query</h2>
@@ -970,7 +970,7 @@ export default function ChatPage() {
       <div className="relative" key="conversations-container">
         <div
           ref={containerRef}
-          className="w-full overflow-y-auto scrollbar-none"
+          className="w-full overflow-y-auto scrollbar-none mt-8 sm:mt-0"
           style={{ 
             height: 'calc(100vh - 200px)',
             paddingBottom: '80px',
@@ -1005,7 +1005,7 @@ export default function ChatPage() {
 
           {/* Single container for both streaming and processing states */}
           {(isStreaming || isSecondResponseLoading) && messages.length > 0 && !currentConversation.find(conv => conv.question === processingQuery) && (
-            <div key={`streaming-${messageId}`} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4">
+            <div key={`streaming-${messageId}`} className="w-full bg-white rounded-lg shadow-sm p-6 mb-4 mt-16 sm:mt-0">
               <div className="mb-4 pb-4 border-b">
                 <div className="flex items-center gap-2">
                   <p className="text-gray-800 break-words font-bold" style={{ fontFamily: systemFontFamily }}>
@@ -1360,9 +1360,9 @@ export default function ChatPage() {
               "relative",
               "flex-grow w-full",
               "flex flex-col",
-              "pt-32 px-4",
+              "pt-16 sm:pt-32 px-4",
             )}>
-              <div className="w-full">
+              <div className="w-full mt-16 sm:mt-0">
                 {currentConversation.length === 0 && showInitialQuestions && !isStreaming && !isLoading ? (
                   // Initial questions view (only show if no conversations exist)
                   <div className="w-full min-h-[calc(100vh-200px)] flex flex-col items-center justify-center">
