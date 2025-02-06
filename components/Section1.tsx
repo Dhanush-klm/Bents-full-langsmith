@@ -203,7 +203,7 @@ export default function Section1({ onStartChatting, isSignedIn }: Section1Props)
                     "focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50"
                   )}
                 >
-                  <span className="relative z-10">Sign In</span>
+                  <span className="relative z-10">Sign In/Up to start chatting</span>
                 </button>
               </SignInButton>
             </SignedOut>
