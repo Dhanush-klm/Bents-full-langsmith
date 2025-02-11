@@ -102,7 +102,7 @@ Current Question: ${query}
 Response (GREETING, RELEVANT, INAPPROPRIATE, or NOT_RELEVANT):`;
 
   const result = await openaiClient.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o-2024-11-20',
     messages: [{ role: 'user', content: relevancePrompt }],
     temperature: 0
   });
@@ -129,7 +129,7 @@ Rewritten query:`;
 
   try {
     const result = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-4o-2024-11-20',
       messages: [{ role: 'user', content: rewritePrompt }],
       temperature: 0
     });
@@ -200,7 +200,7 @@ export async function POST(req: Request) {
     if (relevanceResult === 'GREETING' || relevanceResult === 'INAPPROPRIATE' || relevanceResult === 'NOT_RELEVANT') {
       if (relevanceResult === 'GREETING') {
         const result = await streamText({
-          model: openai('gpt-4o-mini'),
+          model: openai('gpt-4o-2024-11-20'),
           messages: [{ 
             role: 'user', 
             content: `The following message is a greeting or casual message. Please provide a friendly and engaging response: ${lastUserMessage}` 
@@ -211,7 +211,7 @@ export async function POST(req: Request) {
 
       if (relevanceResult === 'INAPPROPRIATE') {
         const result = await streamText({
-          model: openai('gpt-4o-mini'),
+          model: openai('gpt-4o-2024-11-20'),
           messages: [{ 
             role: 'user',
             content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
@@ -299,7 +299,7 @@ export async function POST(req: Request) {
     // Before final stream
     console.log('⏳ [POST] Streaming response');
     const result = await streamText({
-      model: openai('gpt-4o-mini'),
+      model: openai('gpt-4o-2024-11-20'),
       messages: [
         { role: "system", 
           content: SYSTEM_INSTRUCTIONS 
