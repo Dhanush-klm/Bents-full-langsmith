@@ -161,7 +161,7 @@ export async function POST(req: Request) {
       
       console.log('\n🤖 Starting video processing LLM call...');
       const videoResponse = await openaiClient.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o-2024-11-20',
         messages: [
           {
             role: 'system',
