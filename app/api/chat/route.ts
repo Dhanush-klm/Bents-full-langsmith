@@ -222,7 +222,7 @@ export async function POST(req: Request) {
 
       if (relevanceResult === 'NOT_RELEVANT') {
         const result = await streamText({
-          model: openai('gpt-4o-mini'),
+          model: openai('gpt-4o-2024-11-20'),
           messages: [
             {
               role: 'user',
