@@ -7,7 +7,6 @@ interface Product {
   title: string;
   tags: string;
   link: string;
-  image_data: Buffer | null;
 }
 
 // Create pool outside the handler
@@ -27,7 +26,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const sortOption = searchParams.get('sort') || 'default';
     
-    let query = 'SELECT id, title, tags, link, image_data FROM products';
+    // Modified query to exclude image_data
+    let query = 'SELECT id, title, tags, link FROM products';
     if (sortOption === 'video') {
       query += ' ORDER BY tags';
     }
@@ -42,7 +42,6 @@ export async function GET(request: Request) {
       const allTags = product.tags.split(',').map(tag => tag.trim());
       return {
         ...product,
-        image_data: product.image_data ? product.image_data.toString('base64') : null,
         tags: allTags,
         groupTags: allTags.slice(0, -1)
       };
