@@ -24,6 +24,7 @@ interface Product {
   title: string;
   link: string;
   groupTags: string[];
+  image_link?: string;
 }
 
 interface GroupedProducts {
@@ -43,7 +44,7 @@ function ProductCard({ product }: ProductCardProps) {
           <div className="w-full h-48 flex items-center justify-center bg-white rounded-[8px] overflow-hidden mb-4">
             <div className="relative w-full h-full">
               <Image
-                src="/default-product-image.jpg"
+                src={product.image_link || "/default-product-image.jpg"}
                 alt={product.title}
                 fill
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"

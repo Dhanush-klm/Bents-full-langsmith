@@ -7,6 +7,7 @@ interface Product {
   title: string;
   tags: string;
   link: string;
+  image_link?: string;
 }
 
 // Create pool outside the handler
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     const sortOption = searchParams.get('sort') || 'default';
     
     // Modified query to exclude image_data
-    let query = 'SELECT id, title, tags, link FROM products';
+    let query = 'SELECT id, title, tags, link, image_link FROM products';
     if (sortOption === 'video') {
       query += ' ORDER BY tags';
     }
