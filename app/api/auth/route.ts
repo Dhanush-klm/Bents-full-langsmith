@@ -14,7 +14,12 @@ export async function POST(req: Request) {
   // Handle different events
   switch (payload.type) {
     case 'user.created':
-      console.log('New user signed up:', payload.data);
+      console.log('New User Created:', {
+        userId: payload.data.id,
+        email: payload.data.email_addresses?.[0]?.email_address,
+        firstName: payload.data.first_name,
+        lastName: payload.data.last_name
+      });
       // Add your logging logic here
       break;
     case 'user.updated':
