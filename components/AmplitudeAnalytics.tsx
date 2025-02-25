@@ -16,6 +16,4 @@ export default function AmplitudeAnalytics() {
   }, [isInitialized, trackAmplitudeEvent]);
 
   return null;
-
-  
 }
