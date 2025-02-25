@@ -43,16 +43,7 @@ export default function RootLayout({
             src="https://cdn.amplitude.com/libs/plugin-session-replay-browser-1.6.22-min.js.gz"
             strategy="beforeInteractive"
           />
-          <Script id="amplitude-init">
-            {`
-              window.amplitude.add(window.sessionReplay.plugin({sampleRate: 1}));
-              window.amplitude.init('2ebec7feee191712641de915f259fd72', {
-                "autocapture": {
-                  "elementInteractions": true
-                }
-              });
-            `}
-          </Script>
+          
         </head>
         <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
           <AmplitudeProvider apiKey={process.env.NEXT_PUBLIC_AMPLITUDE_API_KEY}>
