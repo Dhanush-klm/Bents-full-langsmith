@@ -4,6 +4,9 @@ import { neonConfig, Pool } from '@neondatabase/serverless';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import OpenAI from 'openai';
+import { traceable } from 'langsmith/traceable';
+import { AISDKExporter } from 'langsmith/vercel';
+import { wrapOpenAI } from 'langsmith/wrappers';
 // Types
 interface ChatHistory {
   role: 'user' | 'assistant';
@@ -80,7 +83,7 @@ class DatabaseService {
 const dbService = new DatabaseService();
 
 // Initialize OpenAI client
-const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openaiClient = wrapOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 
 // Add these functions before the POST handler
 type RelevanceResult = 'GREETING' | 'RELEVANT' | 'INAPPROPRIATE' | 'NOT_RELEVANT';
@@ -102,7 +105,7 @@ Current Question: ${query}
 Response (GREETING, RELEVANT, INAPPROPRIATE, or NOT_RELEVANT):`;
 
   const result = await openaiClient.chat.completions.create({
-    model: 'gpt-4o-2024-11-20',
+    model: 'gpt-4o-mini',
     messages: [{ role: 'user', content: relevancePrompt }],
     temperature: 0
   });
@@ -129,7 +132,7 @@ Rewritten query:`;
 
   try {
     const result = await openaiClient.chat.completions.create({
-      model: 'gpt-4o-2024-11-20',
+      model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: rewritePrompt }],
       temperature: 0
     });
@@ -173,159 +176,150 @@ Remember:
 - Keep responses clear, practical, and focused on woodworking expertise
 `;
 
-export const maxDuration = 30;
 export const runtime = 'edge';
+export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  console.log('🚀 [POST] Request received');
   try {
-    const body = await req.json();
-    console.log('📝 [POST] Processing messages:', {
-      messageCount: body.messages?.length
+    const pipeline = traceable(async (messages: any[], lastUserMessage: string) => {
+      // Existing relevance check and query rewrite logic remains
+      const relevanceResult = await checkRelevance(lastUserMessage, messages);
+      
+      if (relevanceResult === 'GREETING' || relevanceResult === 'INAPPROPRIATE' || relevanceResult === 'NOT_RELEVANT') {
+        if (relevanceResult === 'GREETING') {
+          return streamText({
+            model: openai('gpt-4o-mini'),
+            messages: [{ 
+              role: 'user', 
+              content: `The following message is a greeting or casual message. Please provide a friendly and engaging response: ${lastUserMessage}` 
+            }],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'greeting-completion',
+              metadata: { type: 'greeting' }
+            })
+          });
+        }
+        if (relevanceResult === 'INAPPROPRIATE') {
+          return streamText({
+            model: openai('gpt-4o-mini'),
+            messages: [{ 
+              role: 'user',
+              content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
+            }],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'inappropriate-completion',
+              metadata: { type: 'inappropriate' }
+            })
+          });
+        }
+        if (relevanceResult === 'NOT_RELEVANT') {
+          return streamText({
+            model: openai('gpt-4o-mini'),
+            messages: [
+              {
+                role: 'user',
+                content: `The following question is not directly related to woodworking or the assistant's expertise. Provide a direct response that:
+                1. Politely acknowledges the question
+                2. Explains that you are specialized in woodworking and Jason Bent's content
+                3. Asks them to rephrase their question to relate to woodworking topics
+                Question: ${lastUserMessage}`
+              }
+            ],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'not-relevant-completion',
+              metadata: { type: 'not-relevant' }
+            })
+          });
+        }
+      }
+
+      // For RELEVANT messages, continue with existing logic
+      const rewrittenQuery = await rewriteQuery(lastUserMessage, messages);
+      
+      // Continue with existing embedding logic using rewrittenQuery
+      console.log('⏳ [POST] Generating embedding');
+      const { embedding } = await embed({
+        model: openai.embedding('text-embedding-ada-002'),
+        value: rewrittenQuery,
+        maxRetries: 2,
+        abortSignal: AbortSignal.timeout(5000)
+      });
+      console.log('✅ [POST] Embedding generated:', {
+        length: embedding.length
+      });
+      
+      // Before DB search
+      console.log('⏳ [POST] Searching database');
+      const similarDocs = await dbService.searchNeonDb(embedding, "bents", 10);
+      console.log('✅ [POST] Found similar documents:', {
+        count: similarDocs.length
+      });
+
+      const contextTexts = similarDocs.map(doc => 
+        `Source: ${doc.title}\nContent: ${doc.text}\nURL: ${doc.url}`
+      ).join('\n\n');
+
+      // Only make links request for RELEVANT messages that have context
+      if (relevanceResult === 'RELEVANT' && contextTexts) {
+        console.log('📤 [Chat] Sending data to links route:', {
+          messagesCount: messages.length,
+          contextLength: contextTexts.length,
+          rewrittenQuery
+        });
+
+        const linksResponse = await fetch(new URL('/api/links', req.url), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            context: contextTexts,
+            query: rewrittenQuery
+          })
+        });
+
+        const linksData = await linksResponse.json();
+        console.log('📥 [Chat] Received response from links route:', {
+          status: linksResponse.status,
+          hasVideoRefs: Boolean(linksData?.videoReferences),
+          hasProducts: Boolean(linksData?.relatedProducts)
+        });
+      }
+
+      // Before final stream
+      console.log('⏳ [POST] Streaming response');
+      return streamText({
+        model: openai('gpt-4o-mini'),
+        messages: [
+          { role: "system", content: SYSTEM_INSTRUCTIONS },
+          { 
+            role: "user", 
+            content: `Chat History:\n${JSON.stringify(messages.slice(-5))}\n\nContext:\n${contextTexts}\n\nQuestion: ${lastUserMessage}` 
+          }
+        ],
+        experimental_telemetry: AISDKExporter.getSettings({
+          runName: 'chat-completion',
+          metadata: { type: 'chat' }
+        })
+      });
+    }, {
+      name: 'chat-pipeline'
     });
+
+    const body = await req.json();
     const messages = Array.isArray(body.messages) ? body.messages : [];
-    const chatHistory = messages.map((msg: { role: string; content: string }) => ({
-      role: msg.role,
-      content: msg.content
-    }));
     const lastUserMessage = messages.findLast(
       (msg: { role: string; content: string }) => msg.role === 'user'
     )?.content || '';
 
-    // Add relevance check
-    console.log('⏳ [POST] Checking relevance');
-    const relevanceResult = await checkRelevance(lastUserMessage, messages);
-    console.log('✅ [POST] Relevance result:', relevanceResult);
-
-    if (relevanceResult === 'GREETING' || relevanceResult === 'INAPPROPRIATE' || relevanceResult === 'NOT_RELEVANT') {
-      if (relevanceResult === 'GREETING') {
-        const result = await streamText({
-          model: openai('gpt-4o-2024-11-20'),
-          messages: [{ 
-            role: 'user', 
-            content: `The following message is a greeting or casual message. Please provide a friendly and engaging response: ${lastUserMessage}` 
-          }],
-        });
-        return result.toDataStreamResponse();
-      }
-
-      if (relevanceResult === 'INAPPROPRIATE') {
-        const result = await streamText({
-          model: openai('gpt-4o-2024-11-20'),
-          messages: [{ 
-            role: 'user',
-            content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
-          }],
-        });
-        return result.toDataStreamResponse();
-      }
-
-      if (relevanceResult === 'NOT_RELEVANT') {
-        const result = await streamText({
-          model: openai('gpt-4o-2024-11-20'),
-          messages: [
-            {
-              role: 'user',
-              content: `The following question is not directly related to woodworking or the assistant's expertise. Provide a direct response that:
-              1. Politely acknowledges the question
-              2. Explains that you are specialized in woodworking and Jason Bent's content
-              3. Asks them to rephrase their question to relate to woodworking topics
-              Question: ${lastUserMessage}`
-            }
-          ],
-        });
-        return result.toDataStreamResponse();
-      }
-    }
-
-    // Only proceed with DB search and links route for RELEVANT messages
-    console.log('⏳ [POST] Rewriting query');
-    const rewrittenQuery = await rewriteQuery(lastUserMessage, messages);
-    console.log('✅ [POST] Query rewritten:', { 
-      original: lastUserMessage, 
-      rewritten: rewrittenQuery 
-    });
-    
-    // Continue with existing embedding logic using rewrittenQuery
-    console.log('⏳ [POST] Generating embedding');
-    const { embedding } = await embed({
-      model: openai.embedding('text-embedding-ada-002'),
-      value: rewrittenQuery,
-      maxRetries: 2,
-      abortSignal: AbortSignal.timeout(5000)
-    });
-    console.log('✅ [POST] Embedding generated:', {
-      length: embedding.length
-    });
-    
-    // Before DB search
-    console.log('⏳ [POST] Searching database');
-    const similarDocs = await dbService.searchNeonDb(embedding, "bents", 10);
-    console.log('✅ [POST] Found similar documents:', {
-      count: similarDocs.length
-    });
-
-    const contextTexts = similarDocs.map(doc => 
-      `Source: ${doc.title}\nContent: ${doc.text}\nURL: ${doc.url}`
-    ).join('\n\n');
-
-    // Only make links request for RELEVANT messages that have context
-    if (relevanceResult === 'RELEVANT' && contextTexts) {
-      console.log('📤 [Chat] Sending data to links route:', {
-        messagesCount: messages.length,
-        contextLength: contextTexts.length,
-        rewrittenQuery
-      });
-
-      const linksResponse = await fetch(new URL('/api/links', req.url), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          context: contextTexts,
-          query: rewrittenQuery
-        })
-      });
-
-      const linksData = await linksResponse.json();
-      console.log('📥 [Chat] Received response from links route:', {
-        status: linksResponse.status,
-        hasVideoRefs: Boolean(linksData?.videoReferences),
-        hasProducts: Boolean(linksData?.relatedProducts)
-      });
-    }
-
-    // Before final stream
-    console.log('⏳ [POST] Streaming response');
-    const result = await streamText({
-      model: openai('gpt-4o-2024-11-20'),
-      messages: [
-        { role: "system", 
-          content: SYSTEM_INSTRUCTIONS 
-        },
-        { 
-          role: "user", 
-          content: `Chat History:\n${JSON.stringify(chatHistory.slice(-5))}\n\nContext:\n${contextTexts}\n\nQuestion: ${lastUserMessage}` 
-        }
-      ],
-    });
-    console.log('✅ [POST] Response streamed');
-    return result.toDataStreamResponse();
+    const response = await pipeline(messages, lastUserMessage);
+    return response.toDataStreamResponse();
 
   } catch (error) {
-    console.error('❌ [POST] Error:', {
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    // Create a new error response instead of modifying the error object
-    const errorResponse = {
-      type: 'error',
-      status: 500,
-      details: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
-    };
-
-    return new Response(JSON.stringify(errorResponse), {
+    console.error('API route error:', error);
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

@@ -1,9 +1,11 @@
 // Required imports
 import OpenAI from 'openai';
 import { Pool } from 'pg';
+import { traceable } from 'langsmith/traceable';
+import { wrapOpenAI } from 'langsmith/wrappers';
 
 // Initialize OpenAI client and database pool
-const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openaiClient = wrapOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }));
 const pool = new Pool({ connectionString: process.env.POSTGRES_URL! });
 
 // Store for temporary data
@@ -115,6 +117,42 @@ async function getRelatedProducts(videoTitles: string[]): Promise<Product[]> {
   }
 }
 
+// Create a traceable pipeline that includes both the LLM call and processing
+const videoReferencePipeline = traceable(async (context: string, query: string, answer: string) => {
+  // LLM call to extract video references
+  const response = await openaiClient.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      {
+        role: 'system',
+        content: VIDEO_EXTRACTION_PROMPT
+      },
+      {
+        role: 'user',
+        content: `Context:\n${context}\n\nOriginal Question: ${query}\n\nAI Answer: ${answer}\n\nExtract relevant video references:`
+      }
+    ],
+    temperature: 0.1,
+    stream: false
+  });
+  
+  const videoContent = response.choices[0].message.content || '';
+  
+  // Process the video references
+  const { videoDict } = await processVideoReferences(videoContent);
+  
+  // Get related products based on video titles
+  const videoTitles = Object.values(videoDict).map(v => v.video_title);
+  const relatedProducts = await getRelatedProducts(videoTitles);
+  
+  return {
+    videoDict,
+    relatedProducts
+  };
+}, {
+  name: "Video Reference Extraction Pipeline"
+});
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -159,32 +197,13 @@ export async function POST(req: Request) {
       console.log('- Stored Context: ✓');
       console.log('- Frontend Answer: ✓');
       
-      console.log('\n🤖 Starting video processing LLM call...');
-      const videoResponse = await openaiClient.chat.completions.create({
-        model: 'gpt-4o-2024-11-20',
-        messages: [
-          {
-            role: 'system',
-            content: VIDEO_EXTRACTION_PROMPT
-          },
-          {
-            role: 'user',
-            content: `Context:\n${tempStore.context}\n\nOriginal Question: ${tempStore.query}\n\nAI Answer: ${body.answer}\n\nExtract relevant video references:`
-          }
-        ],
-        temperature: 0.1,
-        stream: false
-      });
-
-      console.log('✅ LLM response received');
-      
-      // Process the video references
-      const { videoDict } = await processVideoReferences(videoResponse.choices[0].message.content || '');
+      console.log('\n🤖 Starting video processing pipeline...');
+      const { videoDict, relatedProducts } = await videoReferencePipeline(
+        tempStore.context, 
+        tempStore.query, 
+        body.answer
+      );
       console.log('✅ Video references processed:', Object.keys(videoDict).length);
-      
-      // Get related products based on video titles
-      const videoTitles = Object.values(videoDict).map(v => v.video_title);
-      const relatedProducts = await getRelatedProducts(videoTitles);
       console.log('✅ Related products found:', relatedProducts.length);
       
       // Clear the temporary store
