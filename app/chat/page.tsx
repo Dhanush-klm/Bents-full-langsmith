@@ -15,6 +15,7 @@ import YouTube from 'react-youtube';
 import { useAuth } from '@clerk/nextjs';
 import { useSession } from '@/lib/hooks/useSession';
 import { format } from 'date-fns';
+import { useAmplitude } from '@/lib/hooks/useAmplitude';
 
 // Types
 interface Conversation {
@@ -597,6 +598,7 @@ const ChatSidebar = ({
 export default function ChatPage() {
   const { userId = null } = useAuth();
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const { trackEvent } = useAmplitude();
   const {
     sessions,
     setSessions,
@@ -613,6 +615,13 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [wsError, setWsError] = useState<string | null>(null);
 
+  // Add effect to track page view
+  useEffect(() => {
+    if (userId) {
+      trackEvent('chat_page_viewed');
+    }
+  }, [userId, trackEvent]);
+
   // Add effect to handle page load/refresh
   useEffect(() => {
     if (userId) {
@@ -628,7 +637,11 @@ export default function ChatPage() {
           setCurrentSessionId(newSessionId);
           setShowInitialQuestions(true);
           currentQuestionRef.current = "";
-          setCurrentConversation([]); // Clear current conversation
+          setCurrentConversation([]);
+          
+          trackEvent('new_chat_session_created', {
+            session_id: newSessionId
+          });
           
           if (userId) {
             await axios.post('/api/set-session', {
@@ -641,12 +654,16 @@ export default function ChatPage() {
           }
         } catch (error) {
           console.error('Error initializing new session:', error);
+          trackEvent('chat_session_error', {
+            error_type: 'initialization_failed',
+            error_message: error instanceof Error ? error.message : 'Unknown error'
+          });
         }
       };
 
       initializeNewSession();
     }
-  }, [userId, setSessions, setCurrentSessionId]);
+  }, [userId, setSessions, setCurrentSessionId, trackEvent]);
 
   const manageSession = useCallback(async () => {
     try {
