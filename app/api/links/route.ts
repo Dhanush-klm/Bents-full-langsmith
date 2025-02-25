@@ -91,7 +91,7 @@ async function processVideoReferences(content: string): Promise<{
   };
 }
 
-async function getRelatedProducts(videoTitles: string[]): Promise<Product[]> {
+const getRelatedProducts = traceable(async (videoTitles: string[]): Promise<Product[]> => {
   if (!videoTitles.length) return [];
 
   try {
@@ -115,7 +115,9 @@ async function getRelatedProducts(videoTitles: string[]): Promise<Product[]> {
     console.error('Error getting related products:', error);
     return [];
   }
-}
+}, {
+  name: "Database Product Retrieval"
+});
 
 // Create a traceable pipeline that includes both the LLM call and processing
 const videoReferencePipeline = traceable(async (context: string, query: string, answer: string) => {
