@@ -401,7 +401,7 @@ export async function POST(req: Request) {
       return streamText({
         model: openai('gpt-4o-mini'),
         messages: [
-          { role: "system", content: "Act as a general bot" },
+          { role: "system", content: SYSTEM_INSTRUCTIONS },
           ...messages,
           { role: "assistant", content: response.text }
         ],
