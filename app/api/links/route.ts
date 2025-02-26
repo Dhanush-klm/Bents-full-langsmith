@@ -120,7 +120,7 @@ const getRelatedProducts = traceable(async (videoTitles: string[]): Promise<Prod
 });
 
 // Create a traceable pipeline that includes both the LLM call and processing
-const videoReferencePipeline = traceable(async (context: string, query: string, answer: string) => {
+const videoReferencePipeline = traceable(async (context: string, query: string, answer: string, options?: any) => {
   // LLM call to extract video references
   const response = await openaiClient.chat.completions.create({
     model: 'gpt-4o-mini',
@@ -203,7 +203,12 @@ export async function POST(req: Request) {
       const { videoDict, relatedProducts } = await videoReferencePipeline(
         tempStore.context, 
         tempStore.query, 
-        body.answer
+        body.answer,
+        { 
+          metadata: { 
+            answer: body.answer 
+          } 
+        }
       );
       console.log('✅ Video references processed:', Object.keys(videoDict).length);
       console.log('✅ Related products found:', relatedProducts.length);
