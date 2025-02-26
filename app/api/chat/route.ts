@@ -22,6 +22,18 @@ interface Document {
   similarity_score: number;
 }
 
+interface PipelineResponse {
+  text: string;
+  type: string;
+  metadata: {
+    input: string;
+    output: string;
+    contextCount: number;
+    rewrittenQuery: string;
+    responseType: string;
+  };
+}
+
 // Utility functions
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -181,40 +193,31 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    const pipeline = traceable(async (messages: any[], lastUserMessage: string) => {
+    const pipeline = traceable(async (messages: any[], lastUserMessage: string): Promise<PipelineResponse> => {
       // Existing relevance check and query rewrite logic remains
       const relevanceResult = await checkRelevance(lastUserMessage, messages);
       
       if (relevanceResult === 'GREETING' || relevanceResult === 'INAPPROPRIATE' || relevanceResult === 'NOT_RELEVANT') {
         if (relevanceResult === 'GREETING') {
-          return streamText({
-            model: openai('gpt-4o-mini'),
+          // Get complete response for tracing
+          const completion = await openaiClient.chat.completions.create({
+            model: 'gpt-4o-mini',
             messages: [{ 
               role: 'user', 
               content: `The following message is a greeting or casual message. Please provide a friendly and engaging response: ${lastUserMessage}` 
             }],
-            experimental_telemetry: AISDKExporter.getSettings({
-              runName: 'greeting-completion',
-              metadata: { type: 'greeting' }
-            })
           });
+          const answer = completion.choices[0].message.content || '';
+          return { text: answer, type: 'greeting', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'greeting' } };
         }
         if (relevanceResult === 'INAPPROPRIATE') {
-          return streamText({
-            model: openai('gpt-4o-mini'),
-            messages: [{ 
-              role: 'user',
-              content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
-            }],
-            experimental_telemetry: AISDKExporter.getSettings({
-              runName: 'inappropriate-completion',
-              metadata: { type: 'inappropriate' }
-            })
-          });
+          const answer = "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only.";
+          return { text: answer, type: 'inappropriate', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'inappropriate' } };
         }
         if (relevanceResult === 'NOT_RELEVANT') {
-          return streamText({
-            model: openai('gpt-4o-mini'),
+          // Get complete response for tracing
+          const completion = await openaiClient.chat.completions.create({
+            model: 'gpt-4o-mini',
             messages: [
               {
                 role: 'user',
@@ -225,11 +228,9 @@ export async function POST(req: Request) {
                 Question: ${lastUserMessage}`
               }
             ],
-            experimental_telemetry: AISDKExporter.getSettings({
-              runName: 'not-relevant-completion',
-              metadata: { type: 'not-relevant' }
-            })
           });
+          const answer = completion.choices[0].message.content || '';
+          return { text: answer, type: 'not-relevant', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'not-relevant' } };
         }
       }
 
@@ -260,7 +261,7 @@ export async function POST(req: Request) {
       ).join('\n\n');
 
       // Only make links request for RELEVANT messages that have context
-      if (relevanceResult === 'RELEVANT' && contextTexts) {
+      if (contextTexts) {
         console.log('📤 [Chat] Sending data to links route:', {
           messagesCount: messages.length,
           contextLength: contextTexts.length,
@@ -286,10 +287,9 @@ export async function POST(req: Request) {
         });
       }
 
-      // Before final stream
-      console.log('⏳ [POST] Streaming response');
-      return streamText({
-        model: openai('gpt-4o-mini'),
+      // Get complete response for tracing
+      const completion = await openaiClient.chat.completions.create({
+        model: 'gpt-4o-mini',
         messages: [
           { role: "system", content: SYSTEM_INSTRUCTIONS },
           { 
@@ -297,13 +297,27 @@ export async function POST(req: Request) {
             content: `Chat History:\n${JSON.stringify(messages.slice(-5))}\n\nContext:\n${contextTexts}\n\nQuestion: ${lastUserMessage}` 
           }
         ],
-        experimental_telemetry: AISDKExporter.getSettings({
-          runName: 'chat-completion',
-          metadata: { type: 'chat' }
-        })
       });
+      
+      const answer = completion.choices[0].message.content || '';
+      return { 
+        text: answer, 
+        type: 'chat',
+        metadata: {
+          input: lastUserMessage,
+          output: answer,
+          contextCount: similarDocs?.length || 0,
+          rewrittenQuery,
+          responseType: 'chat'
+        }
+      };
     }, {
-      name: 'chat-pipeline'
+      name: 'chat-pipeline',
+      metadata: {
+        projectName: process.env.LANGSMITH_PROJECT,
+        sessionId: Date.now().toString(),
+        type: 'chat-completion'
+      }
     });
 
     const body = await req.json();
@@ -312,8 +326,24 @@ export async function POST(req: Request) {
       (msg: { role: string; content: string }) => msg.role === 'user'
     )?.content || '';
 
+    // Get complete response and trace it
     const response = await pipeline(messages, lastUserMessage);
-    return response.toDataStreamResponse();
+    
+    // Then stream to user
+    return streamText({
+      model: openai('gpt-4o-mini'),
+      messages: [
+        { role: "system", content: SYSTEM_INSTRUCTIONS },
+        ...messages,
+        { role: "assistant", content: response.text }
+      ],
+      experimental_telemetry: {
+        metadata: {
+          ...response.metadata,
+          type: `${response.type}-stream`
+        }
+      }
+    }).toDataStreamResponse();
 
   } catch (error) {
     console.error('API route error:', error);
