@@ -119,6 +119,7 @@ const getRelatedProducts = traceable(async (videoTitles: string[]): Promise<Prod
   name: "Database Product Retrieval"
 });
 
+
 // Create a traceable pipeline that includes both the LLM call and processing
 const videoReferencePipeline = traceable(async (context: string, query: string, answer: string, options?: any) => {
   // LLM call to extract video references
