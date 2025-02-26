@@ -7,25 +7,6 @@ import OpenAI from 'openai';
 import { traceable } from 'langsmith/traceable';
 import { AISDKExporter } from 'langsmith/vercel';
 import { wrapOpenAI } from 'langsmith/wrappers';
-
-// Initialize LangSmith
-if (!process.env.LANGSMITH_API_KEY) {
-  console.warn('LANGSMITH_API_KEY not found in environment variables');
-}
-
-// Configure LangSmith settings
-const langsmithConfig = {
-  projectName: process.env.LANGSMITH_PROJECT || 'default',
-  apiKey: process.env.LANGSMITH_API_KEY,
-  endpoint: process.env.LANGSMITH_ENDPOINT || 'https://api.smith.langchain.com'
-};
-
-// LangSmith metadata (excluding sensitive info)
-const getLangSmithMetadata = () => ({
-  projectName: langsmithConfig.projectName,
-  endpoint: langsmithConfig.endpoint
-});
-
 // Types
 interface ChatHistory {
   role: 'user' | 'assistant';
@@ -39,18 +20,6 @@ interface Document {
   url: string;
   chunk_id: string;
   similarity_score: number;
-}
-
-interface PipelineResponse {
-  text: string;
-  type: string;
-  metadata: {
-    input: string;
-    output: string;
-    contextCount: number;
-    rewrittenQuery: string;
-    responseType: string;
-  };
 }
 
 // Utility functions
@@ -212,70 +181,40 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    let body;
-    try {
-      body = await req.json();
-    } catch (parseError) {
-      console.error('Failed to parse request body:', parseError);
-      return new Response(JSON.stringify({ 
-        error: 'Invalid JSON in request body' 
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Validate request body
-    if (!body || !Array.isArray(body.messages)) {
-      return new Response(JSON.stringify({ 
-        error: 'Invalid request format. Expected messages array.' 
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const messages = body.messages;
-    const lastUserMessage = messages.findLast(
-      (msg: { role: string; content: string }) => msg.role === 'user'
-    )?.content || '';
-
-    // Validate LangSmith configuration
-    if (!process.env.LANGSMITH_API_KEY) {
-      console.error('LangSmith API key not configured');
-      return new Response(JSON.stringify({ 
-        error: 'LangSmith configuration error' 
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    const pipeline = traceable(async (messages: ChatHistory[], lastUserMessage: string): Promise<PipelineResponse> => {
+    const pipeline = traceable(async (messages: any[], lastUserMessage: string) => {
       // Existing relevance check and query rewrite logic remains
       const relevanceResult = await checkRelevance(lastUserMessage, messages);
       
       if (relevanceResult === 'GREETING' || relevanceResult === 'INAPPROPRIATE' || relevanceResult === 'NOT_RELEVANT') {
         if (relevanceResult === 'GREETING') {
-          // Get complete response for tracing
-          const completion = await openaiClient.chat.completions.create({
-            model: 'gpt-4o-mini',
+          return streamText({
+            model: openai('gpt-4o-mini'),
             messages: [{ 
               role: 'user', 
               content: `The following message is a greeting or casual message. Please provide a friendly and engaging response: ${lastUserMessage}` 
             }],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'greeting-completion',
+              metadata: { type: 'greeting' }
+            })
           });
-          const answer = completion.choices[0].message.content || '';
-          return { text: answer, type: 'greeting', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'greeting' } };
         }
         if (relevanceResult === 'INAPPROPRIATE') {
-          const answer = "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only.";
-          return { text: answer, type: 'inappropriate', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'inappropriate' } };
+          return streamText({
+            model: openai('gpt-4o-mini'),
+            messages: [{ 
+              role: 'user',
+              content: `Please respond with the following message: "I apologize, but I cannot assist with inappropriate content or queries that could cause harm. I'm here to help with woodworking and furniture making questions only."`
+            }],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'inappropriate-completion',
+              metadata: { type: 'inappropriate' }
+            })
+          });
         }
         if (relevanceResult === 'NOT_RELEVANT') {
-          // Get complete response for tracing
-          const completion = await openaiClient.chat.completions.create({
-            model: 'gpt-4o-mini',
+          return streamText({
+            model: openai('gpt-4o-mini'),
             messages: [
               {
                 role: 'user',
@@ -286,9 +225,11 @@ export async function POST(req: Request) {
                 Question: ${lastUserMessage}`
               }
             ],
+            experimental_telemetry: AISDKExporter.getSettings({
+              runName: 'not-relevant-completion',
+              metadata: { type: 'not-relevant' }
+            })
           });
-          const answer = completion.choices[0].message.content || '';
-          return { text: answer, type: 'not-relevant', metadata: { input: lastUserMessage, output: answer, contextCount: 0, rewrittenQuery: '', responseType: 'not-relevant' } };
         }
       }
 
@@ -319,7 +260,7 @@ export async function POST(req: Request) {
       ).join('\n\n');
 
       // Only make links request for RELEVANT messages that have context
-      if (contextTexts) {
+      if (relevanceResult === 'RELEVANT' && contextTexts) {
         console.log('📤 [Chat] Sending data to links route:', {
           messagesCount: messages.length,
           contextLength: contextTexts.length,
@@ -345,84 +286,34 @@ export async function POST(req: Request) {
         });
       }
 
-      // Get complete response for tracing
-      const completion = await openaiClient.chat.completions.create({
-        model: 'gpt-4o-mini',
+      // Before final stream
+      console.log('⏳ [POST] Streaming response');
+      return streamText({
+        model: openai('gpt-4o-mini'),
         messages: [
-          { role: "system", content: SYSTEM_INSTRUCTIONS  },
+          { role: "system", content: SYSTEM_INSTRUCTIONS },
           { 
             role: "user", 
             content: `Chat History:\n${JSON.stringify(messages.slice(-5))}\n\nContext:\n${contextTexts}\n\nQuestion: ${lastUserMessage}` 
           }
         ],
+        experimental_telemetry: AISDKExporter.getSettings({
+          runName: 'chat-completion',
+          metadata: { type: 'chat' }
+        })
       });
-      
-      const answer = completion.choices[0].message.content || '';
-      return { 
-        text: answer, 
-        type: 'chat',
-        metadata: {
-          input: lastUserMessage,
-          output: answer,
-          contextCount: similarDocs?.length || 0,
-          rewrittenQuery,
-          responseType: 'chat'
-        }
-      };
     }, {
-      name: 'chat-pipeline',
-      metadata: {
-        ...getLangSmithMetadata(),
-        type: 'chat-completion',
-        sessionId: Date.now().toString()
-      }
+      name: 'chat-pipeline'
     });
 
-    // Get complete response and trace it
-    const response = await pipeline(messages, lastUserMessage);
-    
-    try {
-      // Log to LangSmith with error handling
-      AISDKExporter.getSettings({
-        runName: `${response.type}-completion`,
-        metadata: {
-          ...response.metadata,
-          ...getLangSmithMetadata(),
-          type: `${response.type}-completion`
-        }
-      });
-    } catch (langsmithError) {
-      console.error('LangSmith logging error:', langsmithError);
-      // Continue execution even if LangSmith logging fails
-    }
+    const body = await req.json();
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    const lastUserMessage = messages.findLast(
+      (msg: { role: string; content: string }) => msg.role === 'user'
+    )?.content || '';
 
-    // Then stream to user
-    try {
-      return streamText({
-        model: openai('gpt-4o-mini'),
-        messages: [
-          { role: "system", content: SYSTEM_INSTRUCTIONS },
-          ...messages,
-          { role: "assistant", content: response.text }
-        ],
-        experimental_telemetry: {
-          metadata: {
-            ...response.metadata,
-            ...getLangSmithMetadata(),
-            type: `${response.type}-stream`
-          }
-        }
-      }).toDataStreamResponse();
-    } catch (streamError) {
-      console.error('Streaming error:', streamError);
-      return new Response(JSON.stringify({ 
-        error: 'Failed to stream response',
-        details: streamError instanceof Error ? streamError.message : 'Unknown streaming error'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
+    const response = await pipeline(messages, lastUserMessage);
+    return response.toDataStreamResponse();
 
   } catch (error) {
     console.error('API route error:', error);
