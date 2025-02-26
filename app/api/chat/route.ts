@@ -349,7 +349,7 @@ export async function POST(req: Request) {
       const completion = await openaiClient.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
-          { role: "system", content: SYSTEM_INSTRUCTIONS },
+          { role: "system", content: "You are a general bot" },
           { 
             role: "user", 
             content: `Chat History:\n${JSON.stringify(messages.slice(-5))}\n\nContext:\n${contextTexts}\n\nQuestion: ${lastUserMessage}` 
@@ -401,7 +401,7 @@ export async function POST(req: Request) {
       return streamText({
         model: openai('gpt-4o-mini'),
         messages: [
-          { role: "system", content: "just give hi" },
+          { role: "system", content: SYSTEM_INSTRUCTIONS },
           ...messages,
           { role: "assistant", content: response.text }
         ],
